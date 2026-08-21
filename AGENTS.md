@@ -2,6 +2,7 @@
 
 ## Related docs
 
+- **Cross-repo** — `coding-philosophy` rule (`gapuchi/ai`)
 - [`src/db/README.md`](src/db/README.md) — schema and entities
 - [`docs/plans/multi-sport-framework/plan.md`](docs/plans/multi-sport-framework/plan.md) — multi-league framework plan
 - [`docs/plans/season-draft/plan.md`](docs/plans/season-draft/plan.md) — pre-season snake draft plan
@@ -22,7 +23,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | `src/soccer.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
 | `src/db/` | Persistence accessors; shared entities at root; league tables under `db/<slug>/` |
 | `src/league.rs` | Compile-time `League` enum — host dispatch face into league modules |
-| League modules (`src/wc/`, …) | API client, poll, standings, tie-break, league-only use cases |
+| League modules (`src/wc/`, …) | League-only variation (e.g. WC eliminations); not shared soccer logic |
 | Host use cases (`registration.rs`, `standings.rs` formatters, `poller.rs`) | Shared orchestration via `League` |
 | `src/commands/` | Thin Discord adapters only |
 
@@ -67,11 +68,19 @@ Tenancy is at **season** (`seasons.guild_id`).
 - Do not hardcode guild or season ids
 - `/config league` changes command focus; data per league stays separate
 
+## Football-data.org soccer leagues
+
+Shared poll, scoring, and tie-break logic lives in host modules (`soccer_poll`, `standings`, `tiebreaker`, `League`). League dirs (`wc/`, `epl/`) hold variation only.
+
+When adding behavior: does every football-data.org soccer league get this? Yes → shared module or `League` arm. No → league module or league DB type.
+
+Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
+
 ## Key patterns
 
 - Resolve the focused season’s league with `League::for_guild` / `League::for_season`, then call enum methods (`list_teams`, `standings`, `poll`, …)
 - `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`
-- Types from `crate::api`; soccer domain helpers from `crate::soccer` (wc module)
+- Types from `crate::api`; soccer domain helpers from `crate::soccer`
 - Competition code from `league_competition_code()` via league slug
 - League-specific slash commands: exhaustive `commands_for(League)` in `commands/mod.rs`
 
@@ -80,12 +89,14 @@ Tenancy is at **season** (`seasons.guild_id`).
 Invoke **`/add-league`** (skill: `.cursor/skills/add-league/`). Short checklist:
 
 1. `League` variant + match arms in `src/league.rs`
-2. League module `src/<slug>/` (teams, standings, poll, …)
-3. `db/<slug>/` accessors if needed (nfl/nba tables may already exist)
+2. League module `src/<slug>/` for variation only (soccer: thin `poll.rs` + optional league commands)
+3. `db/<slug>/` accessors if needed (see `db-layer.mdc` for macro vs hand-written)
 4. `commands_for(League)` for league-only commands
 5. Env + README; `cargo test` / clippy
 
 ## Repo conventions
+
+Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 
 - **Tests** — `tests/migrate.rs`, `tests/standings.rs`, `tests/api.rs`
 - **Errors** — `ApiError` in api; `types::Error` in commands
@@ -98,8 +109,9 @@ Invoke **`/add-league`** (skill: `.cursor/skills/add-league/`). Short checklist:
 | New command | Use case → `commands/` handler → `commands::all()` or `commands_for(League)` → docstring |
 | New DB table | Extend greenfield `CREATE_SCHEMA` in `migrate.rs` (no upgrade path) + `db/` or `db/<league>/` → re-export in `db/mod.rs` |
 | New API endpoint | `api/…` + league module helpers as needed |
-| New league poller | `League::poll` arm + league module `poll`; soccer leagues delegate match ingestion to `soccer_poll` (host `poller.rs` stays generic) |
-| Scoring / tie-breakers | league module + shared `scoring` helpers; update `README.md` if user-visible |
+| New league | **`/add-league` skill** — enum arms, league module, DB, commands |
+| New league poller | `League::poll` arm; soccer leagues delegate to `soccer_poll` |
+| Scoring / tie-breakers | Shared helpers + `League`; update `README.md` if user-visible |
 | Setup / config UX | `README.md` (see `readme-sync.mdc`) |
 
 ## What not to do

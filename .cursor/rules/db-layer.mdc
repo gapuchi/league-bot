@@ -16,3 +16,7 @@ Shared entities at `src/db/` root; league-specific gameplay under `src/db/<leagu
 - Live/polling: `seasons.polling_enabled` — independent of command focus; poller uses `Season::list_live_with_meta`.
 
 World Cup tables (`wc_*` SQL names): accessors in `db/wc/` — `WcMatchResult`, `WcProcessedMatch`, `WcPlayerGoalTotal`, `WcTiebreakerPick`.
+
+**Identical-schema soccer tables** (`processed_matches`, `tiebreaker_picks`, `player_goal_totals`): if migrate columns match wc/epl exactly, use `db/soccer_macros.rs` one-liners in `db/<slug>/`. If schema or behavior diverges, hand-write accessors (see `match_result`).
+
+The macro encodes structural sameness, not domain sameness — break out before adding league-only columns.

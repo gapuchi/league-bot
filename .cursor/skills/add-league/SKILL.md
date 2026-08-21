@@ -48,15 +48,14 @@ Work bottom-up. Keep host files free of league-specific SQL/API types.
 
 ### 2. League module (`src/<slug>/`)
 
-Mirror `src/wc/` as needed:
+For **football-data.org soccer**, shared teams/standings/tie-break/poll ingest live in host modules (`League`, `standings`, `tiebreaker`, `soccer_poll`) — do not copy per slug.
 
 | Module | Responsibility |
 |--------|----------------|
-| `api.rs` (or equiv.) | Build HTTP client from `Data.http` + env token (`OnceLock` OK) |
-| `teams.rs` | `list_teams(data) -> Vec<CatalogTeam>` |
-| `standings.rs` | `get_standings`, `user_points`, tie-break helpers → `StandingRow` |
-| `poll.rs` | Ingest finished games, idempotency, Discord announces → `PollOutcome` |
-| optional | tie-breaker picks, remaining/eliminations, other use cases |
+| `poll.rs` | Delegate match ingest to `soccer_poll`; league-only announce hooks (e.g. WC eliminations) |
+| optional | `remaining.rs`, other league-only use cases |
+
+For **non-soccer** leagues, mirror the full module set as needed (API client, teams, standings, poll, tie-break).
 
 Export via `src/<slug>/mod.rs`. Register `pub mod <slug>;` in `src/lib.rs`.
 
@@ -72,6 +71,7 @@ Add variant and update **every** exhaustive match:
 - `standings`, `user_points`
 - `tiebreaker_value_for_user`, `tiebreaker_pick_for_user`, `clear_picks_for_team` (no-op / empty `Ok` if unused)
 - `poll`
+- Soccer poll DB surface: `finished_matches`, `upsert_match_result`, processed-match helpers, `cache_player_goals` (or no-op arms for non-soccer)
 
 Extend unit tests: slug resolves; unknown still `None`; `ALL` includes the new variant.
 

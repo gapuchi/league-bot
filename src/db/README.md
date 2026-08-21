@@ -24,7 +24,7 @@ SQLite persistence for Discord prediction seasons. A **season** is one Discord g
 - **Tiebreaker pick** — One player pick per user per season for standings tie-breaks (`wc_tiebreaker_picks`, `epl_tiebreaker_picks`, `nba_tiebreaker_picks`, `nfl_tiebreaker_picks`).
 - **Player stat total** — Cached player stats for tie-breakers (`wc_player_goal_totals`, `epl_player_goal_totals`, `nba_player_points_totals`, `nfl_player_touchdown_totals`). Keyed by `(season_id, player_id)`.
 
-World Cup and Premier League accessors live under `db/wc/` and `db/epl/`. NBA and NFL tables exist in the schema for future leagues.
+World Cup and Premier League accessors live under `db/wc/` and `db/epl/`. WC/EPL `processed_match`, `tiebreaker_pick`, and `player_goal_total` accessors are generated from `soccer_macros.rs` when schemas match; `match_result` is hand-written per league. NBA and NFL tables exist in the schema for future leagues.
 
 ## Relationships
 
