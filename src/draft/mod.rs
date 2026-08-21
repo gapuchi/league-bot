@@ -234,6 +234,70 @@ async fn pick_internal(
     ))
 }
 
+/// Undo the most recent draft pick. Only the user who made that pick may call this,
+/// and only before anyone else picks (or the draft freezes).
+pub async fn unpick_for_user(
+    data: &Data,
+    guild_id: u64,
+    user_id: u64,
+) -> Result<String, Error> {
+    let (season_id, order, order_kind) = {
+        let conn = data.db.lock().await;
+        let (season, _league) = League::for_guild(&conn, guild_id)?;
+        if season.roster_phase != RosterPhase::Drafting {
+            return Ok(match season.roster_phase {
+                RosterPhase::Open => {
+                    "No active draft. Use `/unclaim` while the roster is open.".into()
+                }
+                RosterPhase::Frozen => {
+                    "The roster is frozen after the draft. Unpicks are locked.".into()
+                }
+                RosterPhase::Drafting => unreachable!(),
+            });
+        }
+        let session = DraftSession::get(&conn, season.id)?
+            .ok_or("Draft session missing while roster phase is drafting.")?;
+        if session.status != DraftSessionStatus::Active {
+            return Ok("This draft is already complete.".into());
+        }
+        let order = DraftParticipant::user_ids_ordered(&conn, season.id)?;
+        (season.id, order, session.order_kind)
+    };
+
+    let latest = {
+        let conn = data.db.lock().await;
+        Registration::latest_for_season(&conn, season_id)?
+    };
+    let Some(latest) = latest else {
+        return Ok("No picks to undo yet.".into());
+    };
+
+    if latest.user_id != user_id {
+        return Ok(format!(
+            "Only the last picker (<@{}>) can `/draft unpick`.",
+            latest.user_id
+        ));
+    }
+
+    {
+        let conn = data.db.lock().await;
+        let league = League::for_season(&conn, season_id)?;
+        league.clear_picks_for_team(&conn, season_id, latest.user_id, latest.team_id)?;
+        Registration::delete(&conn, season_id, latest.user_id, latest.team_id)?;
+    }
+
+    let pick_index = {
+        let conn = data.db.lock().await;
+        Registration::list_for_season(&conn, season_id)?.len()
+    };
+    let on_clock = next_picker(&order, pick_index, order_kind).unwrap_or(user_id);
+
+    Ok(format!(
+        "**{}** unpicked by <@{}>.\n\nOn the clock: <@{}>.",
+        latest.team_name, user_id, on_clock
+    ))
+}
+
 /// End an in-progress draft early and freeze the roster without drafting every team.
 pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
     let season = {

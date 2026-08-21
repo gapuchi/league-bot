@@ -11,7 +11,7 @@ fn phase_blocks_open_claims(phase: RosterPhase) -> Option<&'static str> {
     match phase {
         RosterPhase::Open => None,
         RosterPhase::Drafting => {
-            Some("A draft is in progress. On-clock players use `/draft pick`; admins may `/assign` only to the player on the clock.")
+            Some("A draft is in progress. On-clock players use `/draft pick`; the last picker may `/draft unpick`; admins may `/assign` only to the player on the clock.")
         }
         RosterPhase::Frozen => {
             Some("The roster is frozen after the draft. Claims and unclaims are locked.")

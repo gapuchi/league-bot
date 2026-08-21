@@ -86,6 +86,31 @@ impl Registration {
         rows.collect()
     }
 
+    /// Most recently inserted registration for the season (draft pick order).
+    pub fn latest_for_season(
+        conn: &Connection,
+        season_id: i64,
+    ) -> rusqlite::Result<Option<Self>> {
+        conn.query_row(
+            "
+            SELECT user_id, team_id, team_name
+            FROM registrations
+            WHERE season_id = ?1
+            ORDER BY rowid DESC
+            LIMIT 1
+            ",
+            params![season_id],
+            |row| {
+                Ok(Registration {
+                    user_id: row.get::<_, i64>(0)? as u64,
+                    team_id: row.get(1)?,
+                    team_name: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+    }
+
     pub fn list_for_user(
         conn: &Connection,
         season_id: i64,

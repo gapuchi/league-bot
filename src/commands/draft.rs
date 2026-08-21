@@ -12,7 +12,13 @@ use super::helpers::guild_id;
     prefix_command,
     slash_command,
     guild_only,
-    subcommands("draft_start", "draft_status", "draft_pick", "draft_end"),
+    subcommands(
+        "draft_start",
+        "draft_status",
+        "draft_pick",
+        "draft_unpick",
+        "draft_end"
+    ),
     subcommand_required
 )]
 pub async fn draft(_ctx: Context<'_>) -> Result<(), Error> {
@@ -75,6 +81,17 @@ pub async fn draft_pick(
     let guild_id = guild_id(&ctx)?;
     let message =
         registration::pick_for_user(ctx.data(), guild_id, ctx.author().id.get(), &team).await?;
+    ctx.say(message).await?;
+    Ok(())
+}
+
+/// Undo your most recent draft pick (only before the next person picks)
+#[poise::command(prefix_command, slash_command, guild_only, rename = "unpick")]
+pub async fn draft_unpick(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+    let guild_id = guild_id(&ctx)?;
+    let message =
+        draft::unpick_for_user(ctx.data(), guild_id, ctx.author().id.get()).await?;
     ctx.say(message).await?;
     Ok(())
 }
