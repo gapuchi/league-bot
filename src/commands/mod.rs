@@ -5,6 +5,7 @@ mod meta;
 mod nfl;
 mod pick_player;
 mod registration;
+mod season;
 mod wc;
 
 pub use config::{config, config_channel, config_league, config_leagues};
@@ -12,7 +13,8 @@ pub use draft::draft;
 pub use meta::{help, ping, register, version};
 pub use pick_player::pick_player;
 pub use registration::{assign, my_team, teams, unclaim, undrafted};
-pub use wc::{remaining, season, standings};
+pub use season::season;
+pub use wc::{remaining, standings};
 
 use crate::league::League;
 

@@ -35,11 +35,11 @@ Slash commands are registered automatically in each guild the bot joins on start
 
 ## Configuration
 
-Each Discord server configures the bot independently. On a **new** server, an admin must create a season first — there is no default until `/config season` has been run in that server. Run `/help config` for subcommands.
+Each Discord server configures the bot independently. On a **new** server, an admin must start a season first — there is no default until `/season start` has been run in that server. Run `/help season` for lifecycle commands and `/help config` for focus and channel setup.
 
-Match announcements are only sent after `/config channel` has been set for that season. Each season keeps its own channel, registrations, scores, and tie-breaker picks. Gameplay commands always target the **command focus** season (default season) for the server where the command was run. The background poller processes seasons marked live for polling, which is separate from command focus. Admins can stop polling for the focused season with `/config season-end`.
+Match announcements are only sent after `/config channel` has been set for that season. Each season keeps its own channel, registrations, scores, and tie-breaker picks. Gameplay commands always target the **command focus** season (default season) for the server where the command was run. The background poller processes seasons with match polling enabled, which is separate from command focus.
 
-Use `/season` to see which league and season commands currently target in this server.
+Use `/season status` to see which league and season commands currently target in this server. Admins run `/season start` to create or resume a season (enables polling and sets focus) and `/season end` to stop match polling without deleting season data.
 
 ### Team selection and pre-season draft
 

@@ -23,7 +23,7 @@ pub(crate) async fn ensure_focused_league(
     };
     if league != expected {
         ctx.say(format!(
-            "This command is only available when the active season is {}. Use `/season` to check, or `/config league` to switch.",
+            "This command is only available when the active season is {}. Use `/season status` to check, or `/config league` to switch.",
             expected.display_name()
         ))
         .await?;

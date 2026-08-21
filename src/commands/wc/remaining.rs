@@ -20,7 +20,7 @@ pub async fn remaining(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
     match remaining::list_for_guild(ctx.data(), guild_id).await? {
         RemainingResult::NotWorldCup => {
-            ctx.say("This command is only available when the active season is World Cup. Use `/season` to check, or `/config league` to switch.")
+            ctx.say("This command is only available when the active season is World Cup. Use `/season status` to check, or `/config league` to switch.")
                 .await?;
         }
         RemainingResult::NoRegistrations => {

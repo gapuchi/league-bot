@@ -50,7 +50,7 @@ ctx.say(message).await?;
 | Term | Meaning |
 |------|---------|
 | **League** | Compile-time competition type (`League` enum in `src/league.rs`, slug e.g. `wc`). Adding a league is a code change. |
-| **Season** | Runtime instance of a league for one guild (`season_id`). Created via `/config season`. |
+| **Season** | Runtime instance of a league for one guild (`season_id`). Created via `/season start`. |
 | **Command focus** | Guild’s `default_season_id` — which season slash commands use. |
 | **Live season** | Season with `polling_enabled` — which seasons the poller processes (independent of focus). |
 
@@ -62,7 +62,7 @@ Tenancy is at **season** (`seasons.guild_id`).
 
 - Gameplay commands: `Season::default_for_guild` / `League::for_guild` — pass invoking `ctx.guild_id()`
 - Poller: `Season::list_live_with_meta()` then `League::from_slug` → `poll`
-- Setup: `/config season` creates a season for a compiled-in league; fresh guilds have none until then
+- Setup: `/season start` creates a season for a compiled-in league; fresh guilds have none until then
 - `season_id` keys registrations, results, tie-breakers, announcements
 - Do not hardcode guild or season ids
 - `/config league` changes command focus; data per league stays separate
@@ -126,5 +126,5 @@ Toolchain and system deps are already provisioned in the VM snapshot; the startu
 
 - **Rust edition 2024** (`Cargo.toml`) requires Rust ≥ 1.85. The base image ships an older `cargo`/`rustc` (1.83) that fails to build this repo; a newer `stable` toolchain is installed via `rustup` and set as default. If a build errors on `edition2024`, run `rustup default stable`.
 - **System libraries**: `reqwest` uses `native-tls`, so `libssl-dev` + `pkg-config` must be present (missing `openssl.pc` breaks the build); `rusqlite` uses the `bundled` feature, so a C compiler (`gcc`) is required. These are already installed in the snapshot.
-- **Running the bot** (`cargo run` / `./target/debug/league-bot`): it is a headless Discord gateway bot with **no local HTTP/UI**. It fail-fasts if `DISCORD_TOKEN` or `FOOTBALL_DATA_API_TOKEN` are unset. With placeholder tokens it still initializes the DB and reaches Discord auth, then exits with `Sent invalid authentication`. A real interactive end-to-end (slash commands like `/config season`, `/draft pick`, `/standings`) needs a real Discord bot token + the bot invited to a guild, plus a football-data.org token (deep data / squads + scorers need a paid tier). See `README.md` for setup and invite scopes.
+- **Running the bot** (`cargo run` / `./target/debug/league-bot`): it is a headless Discord gateway bot with **no local HTTP/UI**. It fail-fasts if `DISCORD_TOKEN` or `FOOTBALL_DATA_API_TOKEN` are unset. With placeholder tokens it still initializes the DB and reaches Discord auth, then exits with `Sent invalid authentication`. A real interactive end-to-end (slash commands like `/season start`, `/draft pick`, `/standings`) needs a real Discord bot token + the bot invited to a guild, plus a football-data.org token (deep data / squads + scorers need a paid tier). See `README.md` for setup and invite scopes.
 - **SQLite is embedded** (no DB server). The file is created automatically at `DATABASE_PATH` (default `league_bot.db`) on first boot; there is no migration path — delete the file to reset (`src/db/migrate.rs`).

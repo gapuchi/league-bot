@@ -272,7 +272,7 @@ impl Season {
         )
     }
 
-    fn get_by_guild_league_slug(
+    pub fn get_by_guild_league_slug(
         conn: &Connection,
         guild_id: u64,
         league_slug: &str,

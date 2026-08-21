@@ -63,7 +63,7 @@ impl League {
         }
     }
 
-    /// Whether `/config season` (and related setup) may target this slug.
+    /// Whether `/season start` (and related setup) may target this slug.
     pub fn supports_season(slug: &str) -> bool {
         Self::from_slug(slug).is_some()
     }
