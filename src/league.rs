@@ -2,9 +2,15 @@ use poise::serenity_prelude as serenity;
 use rusqlite::Connection;
 
 use crate::{
-    db::{Season, SeasonMeta},
+    api::Match,
+    db::{
+        EplMatchResult, EplPlayerGoalTotal, EplProcessedMatch, EplTiebreakerPick, Registration,
+        Season, SeasonMeta, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
+    },
     epl,
-    standings::StandingRow,
+    scoring::FinishedMatch,
+    soccer::full_time_score,
+    standings::{self, StandingRow},
     types::{Data, Error},
     wc,
 };
@@ -36,6 +42,17 @@ pub struct CatalogTeam {
     pub name: String,
     pub short_name: Option<String>,
     pub code: Option<String>,
+}
+
+impl CatalogTeam {
+    pub fn from_api(team: crate::api::Team) -> Self {
+        Self {
+            id: team.id,
+            name: team.name,
+            short_name: team.short_name,
+            code: team.tla,
+        }
+    }
 }
 
 impl League {
@@ -83,16 +100,18 @@ impl League {
     }
 
     pub async fn list_teams(self, data: &Data) -> Result<Vec<CatalogTeam>, Error> {
-        match self {
-            Self::Wc => wc::teams::list_teams(data).await,
-            Self::Epl => epl::teams::list_teams(data).await,
-        }
+        let competition = crate::db::league_competition_code(self.slug());
+        let teams = crate::api::FootballDataApi::from_env(data.http.clone())
+            .fetch_teams(&competition)
+            .await?;
+        Ok(teams.into_iter().map(CatalogTeam::from_api).collect())
     }
 
     pub fn find_team<'a>(self, teams: &'a [CatalogTeam], query: &str) -> Option<&'a CatalogTeam> {
         let query = query.trim().to_lowercase();
         teams.iter().find(|team| {
-            team.name.to_lowercase() == query
+            let name = team.name.to_lowercase();
+            name == query
                 || team
                     .short_name
                     .as_ref()
@@ -101,7 +120,7 @@ impl League {
                     .code
                     .as_ref()
                     .is_some_and(|c| c.to_lowercase() == query)
-                || team.name.to_lowercase().contains(&query)
+                || name.contains(&query)
         })
     }
 
@@ -116,15 +135,63 @@ impl League {
         }
     }
 
+    fn finished_matches(
+        self,
+        conn: &Connection,
+        season_id: i64,
+    ) -> rusqlite::Result<Vec<FinishedMatch>> {
+        Ok(match self {
+            Self::Wc => WcMatchResult::list_for_season(conn, season_id)?
+                .iter()
+                .map(WcMatchResult::as_finished_match)
+                .collect(),
+            Self::Epl => EplMatchResult::list_for_season(conn, season_id)?
+                .iter()
+                .map(EplMatchResult::as_finished_match)
+                .collect(),
+        })
+    }
+
+    fn tiebreaker_for_standings(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        user_id: u64,
+    ) -> rusqlite::Result<(i64, Option<String>)> {
+        match self {
+            Self::Wc => {
+                let pick = WcTiebreakerPick::get_for_user(conn, season_id, user_id)?;
+                let goals = match &pick {
+                    Some(pick) => {
+                        WcPlayerGoalTotal::goals_for_player(conn, season_id, pick.player_id)?
+                    }
+                    None => 0,
+                };
+                Ok((goals, pick.map(|p| p.player_name)))
+            }
+            Self::Epl => {
+                let pick = EplTiebreakerPick::get_for_user(conn, season_id, user_id)?;
+                let goals = match &pick {
+                    Some(pick) => {
+                        EplPlayerGoalTotal::goals_for_player(conn, season_id, pick.player_id)?
+                    }
+                    None => 0,
+                };
+                Ok((goals, pick.map(|p| p.player_name)))
+            }
+        }
+    }
+
     pub fn standings(
         self,
         conn: &Connection,
         season_id: i64,
     ) -> rusqlite::Result<Vec<StandingRow>> {
-        match self {
-            Self::Wc => wc::standings::get_standings(conn, season_id),
-            Self::Epl => epl::standings::get_standings(conn, season_id),
-        }
+        standings::build_rows(
+            &self.finished_matches(conn, season_id)?,
+            &Registration::list_for_season(conn, season_id)?,
+            |user_id| self.tiebreaker_for_standings(conn, season_id, user_id),
+        )
     }
 
     pub fn user_points(
@@ -133,10 +200,10 @@ impl League {
         season_id: i64,
         user_id: u64,
     ) -> rusqlite::Result<i64> {
-        match self {
-            Self::Wc => wc::standings::user_points(conn, season_id, user_id),
-            Self::Epl => epl::standings::user_points(conn, season_id, user_id),
-        }
+        Ok(standings::points_for_user_teams(
+            &self.finished_matches(conn, season_id)?,
+            &Registration::list_for_user(conn, season_id, user_id)?,
+        ))
     }
 
     pub fn tiebreaker_value_for_user(
@@ -145,10 +212,7 @@ impl League {
         season_id: i64,
         user_id: u64,
     ) -> rusqlite::Result<i64> {
-        match self {
-            Self::Wc => wc::standings::tiebreaker_goals_for_user(conn, season_id, user_id),
-            Self::Epl => epl::standings::tiebreaker_goals_for_user(conn, season_id, user_id),
-        }
+        Ok(self.tiebreaker_for_standings(conn, season_id, user_id)?.0)
     }
 
     /// `(player_name, team_name)` when the user has a tie-breaker pick.
@@ -158,10 +222,12 @@ impl League {
         season_id: i64,
         user_id: u64,
     ) -> rusqlite::Result<Option<(String, String)>> {
-        match self {
-            Self::Wc => wc::standings::tiebreaker_pick_for_user(conn, season_id, user_id),
-            Self::Epl => epl::standings::tiebreaker_pick_for_user(conn, season_id, user_id),
-        }
+        Ok(match self {
+            Self::Wc => WcTiebreakerPick::get_for_user(conn, season_id, user_id)?
+                .map(|pick| (pick.player_name, pick.team_name)),
+            Self::Epl => EplTiebreakerPick::get_for_user(conn, season_id, user_id)?
+                .map(|pick| (pick.player_name, pick.team_name)),
+        })
     }
 
     pub fn clear_picks_for_team(
@@ -172,12 +238,141 @@ impl League {
         team_id: i64,
     ) -> rusqlite::Result<()> {
         match self {
-            Self::Wc => {
-                wc::standings::clear_picks_for_team(conn, season_id, user_id, team_id)
+            Self::Wc => WcTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
+            Self::Epl => EplTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
+        }
+    }
+
+    pub async fn pick_tiebreaker_player(
+        self,
+        data: &Data,
+        guild_id: u64,
+        user_id: u64,
+        player: &str,
+    ) -> Result<String, Error> {
+        crate::tiebreaker::pick_tiebreaker_player(data, guild_id, user_id, player, |conn,
+                                                                                     season_id,
+                                                                                     user_id,
+                                                                                     selected| {
+            match self {
+                Self::Wc => WcTiebreakerPick::upsert(
+                    conn,
+                    season_id,
+                    user_id,
+                    selected.player_id,
+                    &selected.player_name,
+                    selected.team_id,
+                    &selected.team_name,
+                ),
+                Self::Epl => EplTiebreakerPick::upsert(
+                    conn,
+                    season_id,
+                    user_id,
+                    selected.player_id,
+                    &selected.player_name,
+                    selected.team_id,
+                    &selected.team_name,
+                ),
             }
-            Self::Epl => {
-                epl::standings::clear_picks_for_team(conn, season_id, user_id, team_id)
+        })
+        .await
+    }
+
+    pub fn cache_player_goals(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        totals: &[(i64, i64)],
+        updated_at: &str,
+    ) -> rusqlite::Result<()> {
+        match self {
+            Self::Wc => WcPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
+            Self::Epl => EplPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
+        }
+    }
+
+    pub fn stored_match_score(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        match_id: i64,
+    ) -> rusqlite::Result<Option<(i64, i64)>> {
+        match self {
+            Self::Wc => WcMatchResult::score(conn, season_id, match_id),
+            Self::Epl => EplMatchResult::score(conn, season_id, match_id),
+        }
+    }
+
+    pub fn is_match_processed(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        match_id: i64,
+    ) -> rusqlite::Result<bool> {
+        match self {
+            Self::Wc => WcProcessedMatch::is_processed(conn, season_id, match_id),
+            Self::Epl => EplProcessedMatch::is_processed(conn, season_id, match_id),
+        }
+    }
+
+    pub fn mark_match_processed(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        match_id: i64,
+    ) -> rusqlite::Result<()> {
+        match self {
+            Self::Wc => WcProcessedMatch::mark(conn, season_id, match_id),
+            Self::Epl => EplProcessedMatch::mark(conn, season_id, match_id),
+        }
+    }
+
+    pub fn unmark_match_processed(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        match_id: i64,
+    ) -> rusqlite::Result<()> {
+        match self {
+            Self::Wc => WcProcessedMatch::unmark(conn, season_id, match_id),
+            Self::Epl => EplProcessedMatch::unmark(conn, season_id, match_id),
+        }
+    }
+
+    /// Persist the finished-match score. No-op when the API row lacks team ids or a full-time score.
+    pub fn upsert_match_result(
+        self,
+        conn: &Connection,
+        season_id: i64,
+        m: &Match,
+    ) -> rusqlite::Result<()> {
+        let Some((home_goals, away_goals)) = full_time_score(m) else {
+            return Ok(());
+        };
+        let (Some(home_team_id), Some(away_team_id)) = (m.home_team.id, m.away_team.id) else {
+            return Ok(());
+        };
+        match self {
+            Self::Wc => WcMatchResult {
+                season_id,
+                match_id: m.id,
+                home_team_id,
+                away_team_id,
+                home_goals,
+                away_goals,
+                stage: m.stage.clone(),
             }
+            .upsert(conn),
+            Self::Epl => EplMatchResult {
+                season_id,
+                match_id: m.id,
+                home_team_id,
+                away_team_id,
+                home_goals,
+                away_goals,
+                matchday: m.matchday,
+            }
+            .upsert(conn),
         }
     }
 

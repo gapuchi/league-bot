@@ -1,4 +1,5 @@
 use std::fmt;
+use std::sync::OnceLock;
 
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -145,6 +146,17 @@ impl FootballDataApi {
         }
     }
 
+    /// Shared football-data.org token used by soccer league modules (wc, epl).
+    pub fn from_env(client: reqwest::Client) -> Self {
+        static TOKEN: OnceLock<String> = OnceLock::new();
+        let token = TOKEN.get_or_init(|| {
+            std::env::var("FOOTBALL_DATA_API_TOKEN").expect(
+                "FOOTBALL_DATA_API_TOKEN must be set (required while soccer leagues are compiled in)",
+            )
+        });
+        Self::new(client, token.clone())
+    }
+
     async fn get(&self, path: &str) -> Result<reqwest::Response, ApiError> {
         let url = format!("{BASE_URL}{path}");
         let response = self
@@ -162,16 +174,6 @@ impl FootballDataApi {
         let response = self.get(&path).await?;
         let body: TeamsResponse = response.json().await.map_err(ApiError::Request)?;
         Ok(body.teams)
-    }
-
-    pub async fn fetch_finished_matches(
-        &self,
-        competition: &str,
-    ) -> Result<Vec<Match>, ApiError> {
-        let path = format!("/competitions/{competition}/matches?status=FINISHED");
-        let response = self.get(&path).await?;
-        let body: MatchesResponse = response.json().await.map_err(ApiError::Request)?;
-        Ok(body.matches)
     }
 
     pub async fn fetch_competition_matches(

@@ -47,7 +47,7 @@ Host dispatches through a `League` enum into per-league modules so adding a leag
 
 ## Approach
 
-Add `League` + method faces; point registration/standings/commands at enum + command focus; point poller at live-season query + enum; reshape WC into the first league module; drop host `soccar_api()` / WC types from shared paths; document compile-time “add a league” vs runtime seasons.
+Add `League` + method faces; point registration/standings/commands at enum + command focus; point poller at live-season query + enum; reshape WC into the first league module; drop host `soccer_api()` / WC types from shared paths; document compile-time “add a league” vs runtime seasons.
 
 ## Boundaries
 
@@ -81,7 +81,7 @@ commands::all() = shared ++ flatten(each League variant’s commands())
 - `poller.rs` — live filter + `League::poll` (stop using command focus; stop `match "wc"` strings)
 - `standings.rs`, `registration.rs`, `db/registration.rs`, `types.rs` — peel WC types
 - `db/league.rs` / `db/season.rs` — season setup via enum; add `polling_enabled` + `list_live_*`
-- WC: `api/football_data.rs`, `soccar.rs`, `db/wc/`, `wc/`, `commands/wc/`
+- WC: `api/football_data.rs`, `soccer.rs`, `db/wc/`, `wc/`, `commands/wc/`
 - Command structure: meta + config + shared gameplay (focus) + per-league commands from `League::commands()`
 
 ## Diagram
@@ -137,7 +137,7 @@ flowchart TB
 
 ### PR 3: Peel shared host off WC types (seams for enum methods)
 
-- **Story:** Shared registration / standings / unclaim no longer import `Wc*` or `soccar_api()`; they go through `League` methods (WC arms still call today’s code).
+- **Story:** Shared registration / standings / unclaim no longer import `Wc*` or `soccer_api()`; they go through `League` methods (WC arms still call today’s code).
 - **Edits:** Add `League` methods needed by host; move WC call bodies behind `League::Wc` arms; thin shared use cases.
 - **Depends on:** PR 1 merged
 - **Acceptance:**

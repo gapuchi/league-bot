@@ -4,6 +4,7 @@ mod league;
 mod migrate;
 mod registration;
 mod season;
+mod soccer_macros;
 mod team;
 mod epl;
 mod wc;

@@ -18,7 +18,7 @@ use super::helpers::guild_id;
 pub async fn assign(
     ctx: Context<'_>,
     #[description = "Member to claim the team for"] user: serenity::Member,
-    #[description = "World Cup team name, abbreviation, or code (e.g. Brazil, BRA)"] team: String,
+    #[description = "Team name, abbreviation, or code"] team: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
@@ -38,7 +38,7 @@ pub async fn assign(
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn unclaim(
     ctx: Context<'_>,
-    #[description = "World Cup team name, abbreviation, or code (e.g. Brazil, BRA)"] team: String,
+    #[description = "Team name, abbreviation, or code"] team: String,
 ) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
     let message = registration::unclaim_for_user(
@@ -78,7 +78,10 @@ pub async fn teams(ctx: Context<'_>) -> Result<(), Error> {
             ctx.say("No teams picked yet. Use `/draft pick` to choose a team.")
                 .await?;
         }
-        SeasonTeamsList::ByUser(assignments) => {
+        SeasonTeamsList::ByUser {
+            league_name,
+            assignments,
+        } => {
             let lines: Vec<String> = assignments
                 .iter()
                 .map(|(user_id, teams)| {
@@ -87,7 +90,7 @@ pub async fn teams(ctx: Context<'_>) -> Result<(), Error> {
                 .collect();
 
             let embed = serenity::CreateEmbed::default()
-                .title("World Cup team assignments")
+                .title(format!("{league_name} team assignments"))
                 .description(lines.join("\n"));
 
             ctx.send(poise::CreateReply::default().embed(embed)).await?;

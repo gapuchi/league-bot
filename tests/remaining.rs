@@ -1,7 +1,7 @@
 use league_bot::{
     db::Registration,
-    remaining::group_teams_by_user,
-    soccar::TeamRef,
+    soccer::TeamRef,
+    wc::remaining::group_teams_by_user,
 };
 
 fn registration(user_id: u64, team_id: i64, name: &str) -> Registration {

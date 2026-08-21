@@ -1,6 +1,6 @@
 use league_bot::{
     api::{Match, MatchTeam, Score, ScoreDetail},
-    soccar::full_time_score,
+    soccer::full_time_score,
 };
 
 fn sample_match(home: Option<i64>, away: Option<i64>) -> Match {

@@ -1,14 +1,18 @@
+use rusqlite::Connection;
+
 use crate::{
-    db::{Season, Registration, WcTiebreakerPick},
-    soccar::{fetch_squads_for_teams, find_players},
+    db::{Registration, Season},
+    soccer::{fetch_squads_for_teams, find_players, SquadPlayerMatch},
     types::{Data, Error},
 };
 
+/// Shared soccer tie-breaker pick flow. `upsert` persists the chosen player for the season.
 pub async fn pick_tiebreaker_player(
     data: &Data,
     guild_id: u64,
     user_id: u64,
     player_query: &str,
+    upsert: impl FnOnce(&Connection, i64, u64, &SquadPlayerMatch) -> rusqlite::Result<()>,
 ) -> Result<String, Error> {
     let registrations = {
         let conn = data.db.lock().await;
@@ -24,10 +28,11 @@ pub async fn pick_tiebreaker_player(
 
     let teams: Vec<(i64, String)> = registrations
         .iter()
-        .map(|registration| (registration.team_id, registration.team_name.clone()))
+        .map(|r| (r.team_id, r.team_name.clone()))
         .collect();
 
-    let squad = fetch_squads_for_teams(&crate::wc::football_data(data), &teams).await?;
+    let api = crate::api::FootballDataApi::from_env(data.http.clone());
+    let squad = fetch_squads_for_teams(&api, &teams).await?;
     let matches = find_players(&squad, player_query);
 
     match matches.as_slice() {
@@ -37,15 +42,7 @@ pub async fn pick_tiebreaker_player(
         [selected] => {
             let conn = data.db.lock().await;
             let season = Season::default_for_guild(&conn, guild_id)?;
-            WcTiebreakerPick::upsert(
-                &conn,
-                season.id,
-                user_id,
-                selected.player_id,
-                &selected.player_name,
-                selected.team_id,
-                &selected.team_name,
-            )?;
+            upsert(&conn, season.id, user_id, selected)?;
             Ok(format!(
                 "Tie-breaker player set to **{}** ({})",
                 selected.player_name, selected.team_name
@@ -55,7 +52,7 @@ pub async fn pick_tiebreaker_player(
             let options: Vec<String> = matches
                 .iter()
                 .take(10)
-                .map(|candidate| format!("**{}** ({})", candidate.player_name, candidate.team_name))
+                .map(|c| format!("**{}** ({})", c.player_name, c.team_name))
                 .collect();
             Ok(format!(
                 "Several players match \"{player_query}\". Be more specific:\n{}",

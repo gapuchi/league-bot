@@ -19,7 +19,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | Layer | Role |
 |-------|------|
 | `src/api/` | HTTP clients + serde DTOs only; 1:1 with endpoints |
-| `src/soccar.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
+| `src/soccer.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
 | `src/db/` | Persistence accessors; shared entities at root; league tables under `db/<slug>/` |
 | `src/league.rs` | Compile-time `League` enum — host dispatch face into league modules |
 | League modules (`src/wc/`, …) | API client, poll, standings, tie-break, league-only use cases |
@@ -31,7 +31,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | Concern | Adapter | Use case |
 |---------|---------|----------|
 | Registration | `commands/registration.rs` | `registration.rs` → `League` |
-| Shared standings | `commands/wc/standings.rs` | `League::standings` → `wc/standings` (format helpers in `standings.rs`) |
+| Shared standings | `commands/standings.rs` | `League::standings` → league module (format helpers in `standings.rs`) |
 | WC-only cmds | `commands/wc/` (`remaining`, `pick-player`) | `wc/` (registered via `commands_for(League)`) |
 | Config | `commands/config.rs` | inline DB (small, admin-only) |
 
@@ -70,8 +70,8 @@ Tenancy is at **season** (`seasons.guild_id`).
 ## Key patterns
 
 - Resolve the focused season’s league with `League::for_guild` / `League::for_season`, then call enum methods (`list_teams`, `standings`, `poll`, …)
-- `Data` holds `db` + shared `http`; league modules own their API clients/tokens (e.g. `wc::football_data`)
-- Types from `crate::api`; soccer domain helpers from `crate::soccar` (wc module)
+- `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`
+- Types from `crate::api`; soccer domain helpers from `crate::soccer` (wc module)
 - Competition code from `league_competition_code()` via league slug
 - League-specific slash commands: exhaustive `commands_for(League)` in `commands/mod.rs`
 
@@ -98,7 +98,7 @@ Invoke **`/add-league`** (skill: `.cursor/skills/add-league/`). Short checklist:
 | New command | Use case → `commands/` handler → `commands::all()` or `commands_for(League)` → docstring |
 | New DB table | Extend greenfield `CREATE_SCHEMA` in `migrate.rs` (no upgrade path) + `db/` or `db/<league>/` → re-export in `db/mod.rs` |
 | New API endpoint | `api/…` + league module helpers as needed |
-| New league poller | `League::poll` arm + league module `poll` (host `poller.rs` stays generic) |
+| New league poller | `League::poll` arm + league module `poll`; soccer leagues delegate match ingestion to `soccer_poll` (host `poller.rs` stays generic) |
 | Scoring / tie-breakers | league module + shared `scoring` helpers; update `README.md` if user-visible |
 | Setup / config UX | `README.md` (see `readme-sync.mdc`) |
 
@@ -110,7 +110,7 @@ Invoke **`/add-league`** (skill: `.cursor/skills/add-league/`). Short checklist:
 - Bypass `Season::default_for_guild()` / `League::for_guild` in gameplay commands
 - Hard-wire `Wc*` types into shared host paths (`registration`, host `standings`, `types`, `db/registration`)
 - Monolithic `db/mod.rs` with inline SQL
-- Raw `reqwest::Client` + token in host code when a league module client helper exists
+- Raw `reqwest::Client` + token in host code when `FootballDataApi::from_env` exists
 - Assume command focus controls the poller (use `polling_enabled` / live seasons)
 
 ## Running checks

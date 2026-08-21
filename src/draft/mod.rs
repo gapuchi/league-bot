@@ -24,6 +24,42 @@ pub struct DraftStatus {
     pub remaining_teams: usize,
 }
 
+/// Result of a draft pick attempt (success or soft failure).
+#[derive(Debug, Clone)]
+pub enum PickOutcome {
+    Notice(String),
+    Picked {
+        team_name: String,
+        beneficiary_id: u64,
+        remaining_teams: usize,
+        next_on_clock: Option<u64>,
+    },
+}
+
+impl PickOutcome {
+    pub fn into_message(self) -> String {
+        match self {
+            Self::Notice(msg) => msg,
+            Self::Picked {
+                team_name,
+                beneficiary_id,
+                remaining_teams: _,
+                next_on_clock: None,
+            } => format!(
+                "**{team_name}** drafted by <@{beneficiary_id}>.\n\nAll teams are taken — draft complete. Roster is **frozen**."
+            ),
+            Self::Picked {
+                team_name,
+                beneficiary_id,
+                remaining_teams,
+                next_on_clock: Some(next),
+            } => format!(
+                "**{team_name}** drafted by <@{beneficiary_id}>.\n\nOn the clock: <@{next}> · {remaining_teams} team(s) left."
+            ),
+        }
+    }
+}
+
 pub async fn start_for_guild(
     data: &Data,
     guild_id: u64,
@@ -82,7 +118,9 @@ pub async fn start_for_guild(
         Season::set_roster_phase(&conn, season.id, RosterPhase::Drafting)?;
     }
 
-    let on_clock = next_picker(&user_ids, 0, DraftOrderKind::Snake).unwrap();
+    let Some(on_clock) = next_picker(&user_ids, 0, DraftOrderKind::Snake) else {
+        return Ok("Draft order is empty.".into());
+    };
     let order_line = user_ids
         .iter()
         .enumerate()
@@ -91,8 +129,7 @@ pub async fn start_for_guild(
         .join("\n");
 
     Ok(format!(
-        "Snake draft started (order randomized).\n\n{order_line}\n\nOn the clock: <@{}> — use `/draft pick`.",
-        on_clock
+        "Snake draft started (order randomized).\n\n{order_line}\n\nOn the clock: <@{on_clock}> — use `/draft pick`."
     ))
 }
 
@@ -133,23 +170,12 @@ pub async fn pick_for_user(
     guild_id: u64,
     user_id: u64,
     team_query: &str,
-) -> Result<String, Error> {
-    pick_internal(data, guild_id, user_id, user_id, team_query, false).await
-}
-
-async fn pick_internal(
-    data: &Data,
-    guild_id: u64,
-    actor_id: u64,
-    beneficiary_id: u64,
-    team_query: &str,
-    admin_proxy: bool,
-) -> Result<String, Error> {
-    let (season_id, league, order, order_kind, phase) = {
+) -> Result<PickOutcome, Error> {
+    let (season_id, league, order, order_kind) = {
         let conn = data.db.lock().await;
         let (season, league) = League::for_guild(&conn, guild_id)?;
         if season.roster_phase != RosterPhase::Drafting {
-            return Ok(match season.roster_phase {
+            return Ok(PickOutcome::Notice(match season.roster_phase {
                 RosterPhase::Open => {
                     "No active draft. An admin can `/draft start` when ready.".into()
                 }
@@ -157,59 +183,50 @@ async fn pick_internal(
                     "The roster is frozen after the draft. Picks are locked.".into()
                 }
                 RosterPhase::Drafting => unreachable!(),
-            });
+            }));
         }
         let session = DraftSession::get(&conn, season.id)?
             .ok_or("Draft session missing while roster phase is drafting.")?;
         if session.status != DraftSessionStatus::Active {
-            return Ok("This draft is already complete.".into());
+            return Ok(PickOutcome::Notice("This draft is already complete.".into()));
         }
         let order = DraftParticipant::user_ids_ordered(&conn, season.id)?;
-        (
-            season.id,
-            league,
-            order,
-            session.order_kind,
-            season.roster_phase,
-        )
+        (season.id, league, order, session.order_kind)
     };
-    let _ = phase;
 
     let pick_index = {
         let conn = data.db.lock().await;
         Registration::list_for_season(&conn, season_id)?.len()
     };
     let Some(on_clock) = next_picker(&order, pick_index, order_kind) else {
-        return Ok("Draft order is empty.".into());
+        return Ok(PickOutcome::Notice("Draft order is empty.".into()));
     };
 
-    if beneficiary_id != on_clock {
-        return Ok(format!(
-            "It is <@{}>'s turn to pick (not <@{}>).",
-            on_clock, beneficiary_id
-        ));
-    }
-    if !admin_proxy && actor_id != on_clock {
-        return Ok(format!("It is <@{}>'s turn to pick.", on_clock));
+    if user_id != on_clock {
+        return Ok(PickOutcome::Notice(format!(
+            "It is <@{on_clock}>'s turn to pick (not <@{user_id}>)."
+        )));
     }
 
     let api_teams = league.list_teams(data).await?;
     let Some(selected) = league.find_team(&api_teams, team_query) else {
-        return Ok(league.team_not_found_message(team_query));
+        return Ok(PickOutcome::Notice(
+            league.team_not_found_message(team_query),
+        ));
     };
 
     {
         let conn = data.db.lock().await;
         if let Some(existing) = Registration::get_by_team(&conn, season_id, selected.id)? {
-            return Ok(format!(
+            return Ok(PickOutcome::Notice(format!(
                 "**{}** is already claimed by <@{}>.",
                 selected.name, existing.user_id
-            ));
+            )));
         }
         Registration::upsert(
             &conn,
             season_id,
-            beneficiary_id,
+            user_id,
             selected.id,
             &selected.name,
         )?;
@@ -220,18 +237,23 @@ async fn pick_internal(
         let conn = data.db.lock().await;
         DraftSession::set_status(&conn, season_id, DraftSessionStatus::Complete)?;
         Season::set_roster_phase(&conn, season_id, RosterPhase::Frozen)?;
-        return Ok(format!(
-            "**{}** drafted by <@{}>.\n\nAll teams are taken — draft complete. Roster is **frozen**.",
-            selected.name, beneficiary_id
-        ));
+        return Ok(PickOutcome::Picked {
+            team_name: selected.name.clone(),
+            beneficiary_id: user_id,
+            remaining_teams: 0,
+            next_on_clock: None,
+        });
     }
 
-    let next_index = pick_index + 1;
-    let next = next_picker(&order, next_index, order_kind).unwrap();
-    Ok(format!(
-        "**{}** drafted by <@{}>.\n\nOn the clock: <@{}> · {} team(s) left.",
-        selected.name, beneficiary_id, next, remaining
-    ))
+    let Some(next) = next_picker(&order, pick_index + 1, order_kind) else {
+        return Ok(PickOutcome::Notice("Draft order is empty.".into()));
+    };
+    Ok(PickOutcome::Picked {
+        team_name: selected.name.clone(),
+        beneficiary_id: user_id,
+        remaining_teams: remaining,
+        next_on_clock: Some(next),
+    })
 }
 
 /// Undo the most recent draft pick. Only the user who made that pick may call this,

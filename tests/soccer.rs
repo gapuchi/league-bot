@@ -1,6 +1,6 @@
 use league_bot::{
     api::{Match, MatchTeam, Score, ScoreDetail, Team},
-    soccar::classify_teams,
+    soccer::classify_teams,
 };
 
 fn team(id: i64, name: &str) -> Team {
@@ -47,7 +47,7 @@ fn match_with(
     }
 }
 
-fn ids(classification: &league_bot::soccar::TeamClassification) -> (Vec<i64>, Vec<i64>) {
+fn ids(classification: &league_bot::soccer::TeamClassification) -> (Vec<i64>, Vec<i64>) {
     (
         classification
             .still_in

@@ -9,16 +9,16 @@ use crate::{
     types::{Context, Error},
 };
 
-use super::super::helpers::guild_id;
+use super::helpers::guild_id;
 
 /// Show the points leaderboard
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
-    let rows = {
+    let (league_name, rows) = {
         let conn = ctx.data().db.lock().await;
         let (season, league) = League::for_guild(&conn, guild_id)?;
-        league.standings(&conn, season.id)?
+        (league.display_name(), league.standings(&conn, season.id)?)
     };
 
     if rows.is_empty() {
@@ -33,7 +33,7 @@ pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
     let detail_lines = format_standings_detail_lines(&rows, &ranks);
 
     let summary_embed = serenity::CreateEmbed::default()
-        .title("World Cup standings")
+        .title(format!("{league_name} standings"))
         .description(summary_lines.join("\n"))
         .footer(serenity::CreateEmbedFooter::new(&footer));
 

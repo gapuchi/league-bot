@@ -1,6 +1,6 @@
 ---
 description: football-data.org API client and domain layer conventions
-globs: src/api/**,src/soccar.rs
+globs: src/api/**,src/soccer.rs
 alwaysApply: false
 ---
 
@@ -12,11 +12,14 @@ alwaysApply: false
 - `FootballDataApi` methods that map to endpoints
 - `ApiError`, rate-limit handling
 - Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`)
+- Shared client construction (`FootballDataApi::from_env`)
 
-**Belongs in `soccar.rs` (not `api/`):**
-- `find_team`, `find_players`
+**Belongs in `soccer.rs` (not `api/`):**
+- `find_players`, squad fetch orchestration
 - `fetch_squads_for_teams` (multi-call orchestration + role filter)
 - `full_time_score` (interpreting nullable API score fields)
-- `SquadPlayerMatch`
+- `SquadPlayerMatch`, team classification helpers
 
-Call sites use `ctx.data().soccar_api()` or `data.soccar_api()`.
+Team name lookup for registration uses `League::find_team` on `CatalogTeam`.
+
+Soccer league modules construct the client with `FootballDataApi::from_env(data.http.clone())`.

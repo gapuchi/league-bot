@@ -17,7 +17,7 @@ World Cup `/remaining` command listing teams still in vs eliminated (phase 1), t
 1. **League scope** — WC only; command returns a friendly message when the guild’s default season is not WC.
 2. **Data source** — Live football-data.org on each `/remaining` invocation; no DB in phase 1.
 3. **API** — New `fetch_competition_matches(competition)` returning all matches with `status` and `group`.
-4. **Domain** — `soccar::classify_teams` shared by command (phase 1) and poller (phase 2).
+4. **Domain** — `soccer::classify_teams` shared by command (phase 1) and poller (phase 2).
 5. **Phase 2 persistence** — `wc_announced_eliminations (season_id, team_id)` for idempotency.
 6. **Phase 2 trigger** — End of `poll_wc` after match upsert: classify, diff, announce.
 
@@ -31,14 +31,14 @@ World Cup `/remaining` command listing teams still in vs eliminated (phase 1), t
 
 ## Approach
 
-Extend football-data client → `soccar::classify_teams` + tests → WC use case + command → (phase 2) migration + poller hook.
+Extend football-data client → `soccer::classify_teams` + tests → WC use case + command → (phase 2) migration + poller hook.
 
 ## Boundaries
 
 | Layer | Module | Role |
 |-------|--------|------|
 | API | `api/football_data.rs` | Fetch all competition matches; extended `Match` DTO |
-| Domain | `soccar.rs` | Pure elimination classification |
+| Domain | `soccer.rs` | Pure elimination classification |
 | Use case | `wc/remaining.rs`, `remaining.rs` | WC orchestration + league guard |
 | Command | `commands/wc/remaining.rs` | Discord adapter |
 | DB (phase 2) | `db/wc/announced_elimination.rs` | Track announced eliminations |
@@ -52,10 +52,10 @@ Command → remaining::list_for_guild(data, guild_id)
   invariant: WC league only
 
 remaining → wc::remaining::fetch_report
-  → fetch_teams + fetch_competition_matches → soccar::classify_teams
+  → fetch_teams + fetch_competition_matches → soccer::classify_teams
   invariant: names sorted alphabetically
 
-soccar::classify_teams(teams, matches)
+soccer::classify_teams(teams, matches)
   invariant: still_in ∪ eliminated = all teams; disjoint buckets
 
 Phase 2 poller (after PR 1):
@@ -66,7 +66,7 @@ Phase 2 poller (after PR 1):
 ## Investigation
 
 - `src/api/football_data.rs` — only `fetch_finished_matches` today
-- `src/soccar.rs` — add classification alongside `full_time_score`
+- `src/soccer.rs` — add classification alongside `full_time_score`
 - `src/commands/registration.rs` — `/undrafted` embed/defer pattern
 - `src/poller.rs` — phase 2 hooks `post_match_announcement` pattern
 - football-data free tier: 10 req/min; phase 2 reuses widened matches fetch (no extra call)
@@ -82,7 +82,7 @@ flowchart TB
   end
 
   subgraph domain ["Domain"]
-    SOC["soccar::classify_teams"]
+    SOC["soccer::classify_teams"]
   end
 
   subgraph api ["API"]

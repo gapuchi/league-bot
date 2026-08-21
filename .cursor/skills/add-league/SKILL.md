@@ -124,7 +124,7 @@ Manual smoke: `/config season` with the new slug → `/config channel` → claim
 - Add runtime “register league” plugins or DB-only playable leagues
 - Key the poller off command focus (`default_season_id`)
 - Put HTTP/Discord in `src/db/`
-- Copy WC tournament logic (`soccar::classify_teams`, `/remaining`) into leagues that are not WC-shaped
+- Copy WC tournament logic (`soccer::classify_teams`, `/remaining`) into leagues that are not WC-shaped
 - Leave a `League` variant with missing match arms (won’t compile — fix all arms)
 
 ## Progressive detail

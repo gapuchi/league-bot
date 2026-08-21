@@ -1,8 +1,6 @@
 use crate::{
-    epl,
     league::League,
     types::{Context, Error},
-    wc,
 };
 
 use super::helpers::guild_id;
@@ -21,14 +19,9 @@ pub async fn pick_player(
         League::for_guild(&conn, guild_id)?.1
     };
 
-    let message = match league {
-        League::Wc => {
-            wc::pick_tiebreaker_player(ctx.data(), guild_id, ctx.author().id.get(), &player).await?
-        }
-        League::Epl => {
-            epl::pick_tiebreaker_player(ctx.data(), guild_id, ctx.author().id.get(), &player).await?
-        }
-    };
+    let message = league
+        .pick_tiebreaker_player(ctx.data(), guild_id, ctx.author().id.get(), &player)
+        .await?;
 
     ctx.say(message).await?;
     Ok(())

@@ -39,13 +39,13 @@ async fn poll_once(
         return Ok(());
     }
 
-    let mut by_league: HashMap<String, Vec<SeasonMeta>> = HashMap::new();
-    for meta in season_metas {
-        by_league
-            .entry(meta.league_slug.clone())
-            .or_default()
-            .push(meta);
-    }
+    let by_league = season_metas.into_iter().fold(
+        HashMap::<String, Vec<SeasonMeta>>::new(),
+        |mut map, meta| {
+            map.entry(meta.league_slug.clone()).or_default().push(meta);
+            map
+        },
+    );
 
     let mut total_matches = 0;
     let mut total_scored = 0;
@@ -79,8 +79,7 @@ async fn poll_once(
     }
 
     eprintln!(
-        "Poll complete: {} finished match(es) ({} with scores), {} season(s)",
-        total_matches, total_scored, total_seasons,
+        "Poll complete: {total_matches} finished match(es) ({total_scored} with scores), {total_seasons} season(s)",
     );
 
     Ok(())

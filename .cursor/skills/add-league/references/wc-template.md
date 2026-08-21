@@ -19,14 +19,14 @@ Use while implementing a new league. Copy structure, not tournament rules.
 
 | File | Role |
 |------|------|
-| `src/wc/mod.rs` | Module tree |
-| `src/wc/api.rs` | `football_data(data)` from env + `Data.http` |
-| `src/wc/teams.rs` | Catalog teams for claim/unclaimed |
-| `src/wc/standings.rs` | Points + tie-break from `db/wc` |
-| `src/wc/poll.rs` | Match ingest, scorers cache, elimination announces |
-| `src/wc/tiebreaker.rs` | `/pick-player` use case |
+| `src/wc/mod.rs` | Module tree (`poll`, `remaining`) |
+| `src/wc/poll.rs` | WC elimination announces; delegates match ingest to `soccer_poll` |
+| `src/soccer_poll.rs` | Shared soccer match ingest + full-time announce + scorer cache |
 | `src/wc/remaining.rs` | Tournament remaining (WC-specific) |
-| `src/soccar.rs` | Soccer helpers (WC API interpretation) |
+| `src/league.rs` | Standings + pick-player dispatch (shared soccer logic) |
+| `src/tiebreaker.rs` | Shared soccer pick-player flow |
+| `src/db/soccer_macros.rs` | Macros for parallel soccer table accessors |
+| `src/soccer.rs` | Soccer helpers (WC API interpretation) |
 | `src/api/football_data.rs` | HTTP + DTOs |
 
 ## DB
@@ -42,10 +42,8 @@ Use while implementing a new league. Copy structure, not tournament rules.
 | Path | Shared vs WC-only |
 |------|-------------------|
 | `commands/registration.rs` | Shared |
-| `commands/wc/standings.rs` | Shared surface, dispatches via `League` |
-| `commands/wc/season.rs` | Shared surface |
+| `commands/standings.rs` | Shared surface, dispatches via `League` |
 | `commands/wc/remaining.rs` | WC-only + focus guard |
-| `commands/wc/pick_player.rs` | WC-only + focus guard |
 
 ## NFL/NBA schema stubs
 
