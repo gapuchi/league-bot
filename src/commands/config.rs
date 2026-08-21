@@ -4,6 +4,7 @@ use serenity::Mentionable;
 use crate::{
     db::{GuildConfig, Season, SeasonDisplay, league_exists},
     league::League,
+    season,
     types::{Context, Error},
 };
 
@@ -185,11 +186,33 @@ pub async fn config_season(
     Ok(())
 }
 
+/// End the focused season (stop match polling)
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_only,
+    rename = "season-end",
+    required_permissions = "MANAGE_GUILD"
+)]
+pub async fn config_season_end(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+    let guild_id = guild_id(&ctx)?;
+    let message = season::end_for_guild(ctx.data(), guild_id).await?;
+    ctx.say(message).await?;
+    Ok(())
+}
+
 /// Server configuration
 #[poise::command(
     prefix_command,
     slash_command,
-    subcommands("config_channel", "config_league", "config_leagues", "config_season")
+    subcommands(
+        "config_channel",
+        "config_league",
+        "config_leagues",
+        "config_season",
+        "config_season_end"
+    )
 )]
 pub async fn config(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())

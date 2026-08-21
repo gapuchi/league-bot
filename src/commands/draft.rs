@@ -12,7 +12,7 @@ use super::helpers::guild_id;
     prefix_command,
     slash_command,
     guild_only,
-    subcommands("draft_start", "draft_status", "draft_pick"),
+    subcommands("draft_start", "draft_status", "draft_pick", "draft_end"),
     subcommand_required
 )]
 pub async fn draft(_ctx: Context<'_>) -> Result<(), Error> {
@@ -45,6 +45,22 @@ pub async fn draft_start(
 pub async fn draft_status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
     let message = draft::status_for_guild(ctx.data(), guild_id).await?;
+    ctx.say(message).await?;
+    Ok(())
+}
+
+/// End the draft early and freeze the roster
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_only,
+    rename = "end",
+    required_permissions = "MANAGE_GUILD"
+)]
+pub async fn draft_end(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+    let guild_id = guild_id(&ctx)?;
+    let message = draft::freeze_for_guild(ctx.data(), guild_id).await?;
     ctx.say(message).await?;
     Ok(())
 }

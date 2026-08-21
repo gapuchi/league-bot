@@ -37,7 +37,7 @@ Slash commands are registered automatically in each guild the bot joins on start
 
 Each Discord server configures the bot independently. On a **new** server, an admin must create a season first — there is no default until `/config season` has been run in that server. Run `/help config` for subcommands.
 
-Match announcements are only sent after `/config channel` has been set for that season. Each season keeps its own channel, registrations, scores, and tie-breaker picks. Gameplay commands always target the **command focus** season (default season) for the server where the command was run. The background poller processes seasons marked live for polling, which is separate from command focus.
+Match announcements are only sent after `/config channel` has been set for that season. Each season keeps its own channel, registrations, scores, and tie-breaker picks. Gameplay commands always target the **command focus** season (default season) for the server where the command was run. The background poller processes seasons marked live for polling, which is separate from command focus. Admins can stop polling for the focused season with `/config season-end`.
 
 Use `/season` to see which league and season commands currently target in this server.
 
@@ -48,7 +48,7 @@ Teams are selected through `/draft pick`, with or without a snake draft:
 1. Season roster phase starts as `open`; members may freely use `/draft pick`.
 2. `/draft start` with the list of players — order is **randomized**; phase becomes `drafting`.
 3. During the draft, `/draft pick` is restricted to the player on the clock; admins may `/assign` **only** for that player. `/unclaim` is blocked.
-4. When every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims).
+4. When every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims). Admins can also run `/draft end` to freeze the roster early without drafting every team.
 
 Use `/draft status` anytime for order, whose turn, and remaining teams.
 

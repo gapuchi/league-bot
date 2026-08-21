@@ -234,6 +234,40 @@ async fn pick_internal(
     ))
 }
 
+/// End an in-progress draft early and freeze the roster without drafting every team.
+pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
+    let season = {
+        let conn = data.db.lock().await;
+        Season::default_for_guild(&conn, guild_id)?
+    };
+
+    match season.roster_phase {
+        RosterPhase::Open => {
+            return Ok(
+                "No active draft. Start one with `/draft start`, or use `/draft end` only while drafting."
+                    .into(),
+            );
+        }
+        RosterPhase::Frozen => return Ok("Roster is already **frozen**.".into()),
+        RosterPhase::Drafting => {}
+    }
+
+    {
+        let conn = data.db.lock().await;
+        let Some(session) = DraftSession::get(&conn, season.id)? else {
+            return Ok("No draft session for this season.".into());
+        };
+        if session.status != DraftSessionStatus::Active {
+            Season::set_roster_phase(&conn, season.id, RosterPhase::Frozen)?;
+            return Ok("Roster is **frozen**.".into());
+        }
+        DraftSession::set_status(&conn, season.id, DraftSessionStatus::Complete)?;
+        Season::set_roster_phase(&conn, season.id, RosterPhase::Frozen)?;
+    }
+
+    Ok("Draft ended. Roster is **frozen**.".into())
+}
+
 pub async fn current_picker_for_guild(data: &Data, guild_id: u64) -> Result<Option<u64>, Error> {
     Ok(load_status(data, guild_id)
         .await?
