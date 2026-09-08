@@ -48,7 +48,6 @@ async fn poll_once(
     );
 
     let mut total_matches = 0;
-    let mut total_scored = 0;
     let mut total_seasons = 0;
 
     for (league_slug, seasons) in by_league {
@@ -62,13 +61,11 @@ async fn poll_once(
 
         let outcome = league.poll(data, http, &seasons).await?;
         total_matches += outcome.finished_matches;
-        total_scored += outcome.scored_matches;
         total_seasons += outcome.seasons;
         eprintln!(
-            "{}: {} finished match(es) ({} with scores), {} season(s){}",
+            "{}: {} finished match(es), {} season(s){}",
             league.slug(),
             outcome.finished_matches,
-            outcome.scored_matches,
             outcome.seasons,
             if outcome.detail.is_empty() {
                 String::new()
@@ -78,9 +75,7 @@ async fn poll_once(
         );
     }
 
-    eprintln!(
-        "Poll complete: {total_matches} finished match(es) ({total_scored} with scores), {total_seasons} season(s)",
-    );
+    eprintln!("Poll complete: {total_matches} finished match(es), {total_seasons} season(s)");
 
     Ok(())
 }

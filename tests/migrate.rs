@@ -11,7 +11,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 2);
+    assert_eq!(SCHEMA_VERSION, 3);
 
     let leagues: i64 = conn
         .query_row("SELECT COUNT(*) FROM leagues", [], |row| row.get(0))
@@ -35,14 +35,8 @@ fn fresh_init_seeds_catalog_without_seasons() {
             FROM sqlite_master
             WHERE type = 'table'
               AND name IN (
-                'nba_match_results',
-                'nba_processed_games',
-                'nba_tiebreaker_picks',
-                'nba_player_points_totals',
                 'nfl_match_results',
                 'nfl_processed_games',
-                'nfl_tiebreaker_picks',
-                'nfl_player_touchdown_totals',
                 'epl_match_results',
                 'epl_processed_matches',
                 'epl_tiebreaker_picks',
@@ -56,7 +50,21 @@ fn fresh_init_seeds_catalog_without_seasons() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(league_tables, 15);
+    assert_eq!(league_tables, 9);
+
+    let dropped_tables: i64 = conn
+        .query_row(
+            "
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND (name LIKE 'nba_%' OR name = 'teams' OR name = 'nfl_tiebreaker_picks')
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(dropped_tables, 0);
 }
 
 #[test]
@@ -98,6 +106,93 @@ fn upgrade_adds_postseason_column_to_v1_nfl_results() {
         )
         .unwrap();
     assert_eq!(postseason_default, 1);
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    conn.query_row(
+        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        [column],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap()
+        > 0
+}
+
+fn table_exists(conn: &Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap()
+        > 0
+}
+
+#[test]
+fn upgrade_from_v2_drops_dead_tables_and_columns_but_keeps_data() {
+    let conn = Connection::open_in_memory().unwrap();
+
+    // Minimal v2 layout: live tables with the since-removed columns, plus the dead tables.
+    conn.execute_batch(
+        "
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (2);
+        CREATE TABLE leagues (id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, sport TEXT NOT NULL);
+        INSERT INTO leagues (id, slug, name, sport) VALUES (1, 'wc', 'FIFA World Cup', 'soccer');
+        CREATE TABLE seasons (
+            id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, league_id INTEGER NOT NULL REFERENCES leagues(id),
+            slug TEXT NOT NULL, name TEXT NOT NULL, announce_channel_id INTEGER,
+            polling_enabled INTEGER NOT NULL DEFAULT 1, roster_phase TEXT NOT NULL DEFAULT 'open',
+            starts_at TEXT, ends_at TEXT, UNIQUE (guild_id, league_id, slug)
+        );
+        INSERT INTO seasons (id, guild_id, league_id, slug, name) VALUES (7, 111, 1, 'wc-2026', 'World Cup 2026');
+        CREATE TABLE registrations (
+            season_id INTEGER NOT NULL, user_id INTEGER NOT NULL, team_id INTEGER NOT NULL, team_name TEXT NOT NULL,
+            PRIMARY KEY (season_id, team_id)
+        );
+        INSERT INTO registrations VALUES (7, 100, 769, 'Mexico');
+        CREATE TABLE wc_match_results (
+            season_id INTEGER NOT NULL, match_id INTEGER NOT NULL, home_team_id INTEGER NOT NULL,
+            away_team_id INTEGER NOT NULL, home_goals INTEGER NOT NULL, away_goals INTEGER NOT NULL,
+            stage TEXT, finished_at TEXT, PRIMARY KEY (season_id, match_id)
+        );
+        INSERT INTO wc_match_results VALUES (7, 1, 769, 774, 2, 1, 'GROUP_STAGE', NULL);
+        CREATE TABLE teams (league_id INTEGER NOT NULL, team_id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (league_id, team_id));
+        CREATE TABLE nba_match_results (season_id INTEGER NOT NULL, game_id INTEGER NOT NULL, PRIMARY KEY (season_id, game_id));
+        CREATE TABLE nfl_tiebreaker_picks (season_id INTEGER NOT NULL, user_id INTEGER NOT NULL, PRIMARY KEY (season_id, user_id));
+        ",
+    )
+    .unwrap();
+
+    db::init(&conn).unwrap();
+
+    let version: i64 = conn
+        .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+
+    assert!(!table_exists(&conn, "teams"));
+    assert!(!table_exists(&conn, "nba_match_results"));
+    assert!(!table_exists(&conn, "nfl_tiebreaker_picks"));
+    assert!(!column_exists(&conn, "wc_match_results", "finished_at"));
+    assert!(!column_exists(&conn, "seasons", "starts_at"));
+    assert!(!column_exists(&conn, "seasons", "ends_at"));
+
+    let season = Season::get(&conn, 7).unwrap().unwrap();
+    assert_eq!(season.name, "World Cup 2026");
+    assert_eq!(
+        league_bot::db::WcMatchResult::score(&conn, 7, 1).unwrap(),
+        Some((2, 1))
+    );
+    assert_eq!(
+        league_bot::db::Registration::list_for_season(&conn, 7)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Running again on the now-current database is a no-op.
+    db::init(&conn).unwrap();
 }
 
 #[test]
