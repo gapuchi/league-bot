@@ -11,7 +11,7 @@
 
 ## Project overview
 
-**League Bot** — Discord bot (Rust, poise + serenity) for sports prediction pools. World Cup is live; NFL planned. SQLite persistence; match data from [football-data.org](https://www.football-data.org/).
+**League Bot** — Discord bot (Rust, poise + serenity) for sports prediction pools. World Cup, Premier League, and NFL are live; NBA planned. SQLite persistence; soccer data from [football-data.org](https://www.football-data.org/), NFL data from ESPN's public API.
 
 ## Layer boundaries
 
@@ -19,12 +19,12 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 
 | Layer | Role |
 |-------|------|
-| `src/api/` | HTTP clients + serde DTOs only; 1:1 with endpoints |
+| `src/api/` | HTTP clients + serde DTOs only; 1:1 with endpoints (`football_data`, `espn`) |
 | `src/soccer.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
 | `src/db/` | Persistence accessors; shared entities at root; league tables under `db/<slug>/` |
 | `src/league.rs` | Compile-time `League` enum — host dispatch face into league modules |
-| League modules (`src/wc/`, …) | League-only variation (e.g. WC eliminations); not shared soccer logic |
-| Host use cases (`registration.rs`, `standings.rs` formatters, `poller.rs`) | Shared orchestration via `League` |
+| League modules (`src/wc/`, `src/epl/`, `src/nfl/`) | League-only variation (WC eliminations; NFL calendar, teams, poll); not shared soccer logic |
+| Host use cases (`registration.rs`, `standings.rs` formatters, `game_poll.rs`, `tiebreaker.rs`, `poller.rs`) | Shared sport-agnostic orchestration via `League` |
 | `src/commands/` | Thin Discord adapters only |
 
 **Command adapters vs use cases** — commands handle poise attrs, `guild_id`, defer/reply; use cases resolve season, dispatch via `League`, call `db/` / league modules, return strings.
@@ -44,7 +44,7 @@ let message = registration::pick_for_user(ctx.data(), guild_id, user_id, &team).
 ctx.say(message).await?;
 ```
 
-**Poller** — `poller.rs` lists **live** seasons, groups by league slug, calls `League::poll`; not a command.
+**Poller** — `poller.rs` lists **live** seasons, groups by league slug, calls `League::poll`; not a command. League polls map provider payloads into `game_poll::GameReport` and call `game_poll::process_game` (persist via `League`, score, announce).
 
 ## Leagues vs seasons
 
@@ -70,16 +70,21 @@ Tenancy is at **season** (`seasons.guild_id`).
 
 ## Football-data.org soccer leagues
 
-Shared poll, scoring, and tie-break logic lives in host modules (`soccer_poll`, `standings`, `tiebreaker`, `League`). League dirs (`wc/`, `epl/`) hold variation only.
+Shared poll, scoring, and tie-break logic lives in host modules (`game_poll`, `soccer_poll`, `standings`, `tiebreaker`, `League`). League dirs (`wc/`, `epl/`) hold variation only.
 
-When adding behavior: does every football-data.org soccer league get this? Yes → shared module or `League` arm. No → league module or league DB type.
+When adding behavior: does every league get this? Yes → `game_poll` / `standings` / `tiebreaker` or a `League` arm. Every football-data.org soccer league only? → `soccer_poll` / `soccer`. One league → league module or league DB type.
+
+## NFL (ESPN)
+
+`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `poll`. NFL has **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none (the `nfl_tiebreaker_picks` / `nfl_player_touchdown_totals` tables stay unused). `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
 
 Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
 
 ## Key patterns
 
 - Resolve the focused season’s league with `League::for_guild` / `League::for_season`, then call enum methods (`list_teams`, `standings`, `poll`, …)
-- `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`
+- `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`, NFL uses `EspnNflApi::new(data.http.clone())`
+- User-facing sport words come from `League` (`tiebreaker_unit` is `Option` — `None` hides tie-breaker lines, `draw_label`, `finished_label`) — do not hardcode "goals"/"draw" in host formatters
 - Types from `crate::api`; soccer domain helpers from `crate::soccer`
 - Competition code from `league_competition_code()` via league slug
 - League-specific slash commands: exhaustive `commands_for(League)` in `commands/mod.rs`
@@ -110,7 +115,7 @@ Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 | New DB table | Extend greenfield `CREATE_SCHEMA` in `migrate.rs` (no upgrade path) + `db/` or `db/<league>/` → re-export in `db/mod.rs` |
 | New API endpoint | `api/…` + league module helpers as needed |
 | New league | **`/add-league` skill** — enum arms, league module, DB, commands |
-| New league poller | `League::poll` arm; soccer leagues delegate to `soccer_poll` |
+| New league poller | `League::poll` arm; build `GameReport`s and call `game_poll::process_game` (soccer leagues via `soccer_poll`) |
 | Scoring / tie-breakers | Shared helpers + `League`; update `README.md` if user-visible |
 | Setup / config UX | `README.md` (see `readme-sync.mdc`) |
 
@@ -120,7 +125,7 @@ Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 - Business logic in `commands/`
 - HTTP or Discord in `db/`
 - Bypass `Season::default_for_guild()` / `League::for_guild` in gameplay commands
-- Hard-wire `Wc*` types into shared host paths (`registration`, host `standings`, `types`, `db/registration`)
+- Hard-wire `Wc*` / `Nfl*` types into shared host paths (`registration`, host `standings`, `game_poll`, `types`, `db/registration`)
 - Monolithic `db/mod.rs` with inline SQL
 - Raw `reqwest::Client` + token in host code when `FootballDataApi::from_env` exists
 - Assume command focus controls the poller (use `polling_enabled` / live seasons)

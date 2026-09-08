@@ -22,9 +22,9 @@ SQLite persistence for Discord prediction seasons. A **season** is one Discord g
 - **Processed flag** — Idempotency marker for games the poller already announced and scored (`wc_processed_matches`, `epl_processed_matches`, `nba_processed_games`, `nfl_processed_games`).
 - **Announced elimination** — Idempotency marker for teams the poller already posted as eliminated (`wc_announced_eliminations`).
 - **Tiebreaker pick** — One player pick per user per season for standings tie-breaks (`wc_tiebreaker_picks`, `epl_tiebreaker_picks`, `nba_tiebreaker_picks`, `nfl_tiebreaker_picks`).
-- **Player stat total** — Cached player stats for tie-breakers (`wc_player_goal_totals`, `epl_player_goal_totals`, `nba_player_points_totals`, `nfl_player_touchdown_totals`). Keyed by `(season_id, player_id)`.
+- **Player stat total** — Cached player stats for tie-breakers (`wc_player_goal_totals`, `epl_player_goal_totals`, `nba_player_points_totals`, `nfl_player_touchdown_totals`). Keyed by `(season_id, player_id)`. NFL has no tie-breaker, so `nfl_tiebreaker_picks` and `nfl_player_touchdown_totals` exist in the schema but have no accessors.
 
-World Cup and Premier League accessors live under `db/wc/` and `db/epl/`. WC/EPL `processed_match`, `tiebreaker_pick`, and `player_goal_total` accessors are generated from `soccer_macros.rs` when schemas match; `match_result` is hand-written per league. NBA and NFL tables exist in the schema for future leagues.
+World Cup, Premier League, and NFL accessors live under `db/wc/`, `db/epl/`, and `db/nfl/`. Same-shape tables (`*_processed_matches`, `*_tiebreaker_picks`, `*_player_goal_totals`) are generated from `league_macros.rs`; `match_result` is hand-written per league, as is the NFL `processed_game` accessor whose `game_id` column differs. NBA tables exist in the schema for a future league.
 
 ## Relationships
 

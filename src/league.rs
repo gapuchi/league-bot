@@ -2,15 +2,16 @@ use poise::serenity_prelude as serenity;
 use rusqlite::Connection;
 
 use crate::{
-    api::Match,
     db::{
-        EplMatchResult, EplPlayerGoalTotal, EplProcessedMatch, EplTiebreakerPick, Registration,
-        Season, SeasonMeta, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
+        EplMatchResult, EplPlayerGoalTotal, EplProcessedMatch, EplTiebreakerPick, NflMatchResult,
+        NflProcessedGame, Registration, Season, SeasonMeta, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
     },
     epl,
+    game_poll::GameReport,
+    nfl,
     scoring::FinishedMatch,
-    soccer::full_time_score,
     standings::{self, StandingRow},
+    tiebreaker::{self, RosterPlayer},
     types::{Data, Error},
     wc,
 };
@@ -33,6 +34,7 @@ pub struct PollOutcome {
 pub enum League {
     Wc,
     Epl,
+    Nfl,
 }
 
 /// Team from a league's catalog (registration / unclaimed lists).
@@ -56,12 +58,13 @@ impl CatalogTeam {
 }
 
 impl League {
-    pub const ALL: &[League] = &[League::Wc, League::Epl];
+    pub const ALL: &[League] = &[League::Wc, League::Epl, League::Nfl];
 
     pub fn from_slug(slug: &str) -> Option<Self> {
         match slug {
             "wc" => Some(Self::Wc),
             "epl" => Some(Self::Epl),
+            "nfl" => Some(Self::Nfl),
             _ => None,
         }
     }
@@ -70,6 +73,7 @@ impl League {
         match self {
             Self::Wc => "wc",
             Self::Epl => "epl",
+            Self::Nfl => "nfl",
         }
     }
 
@@ -77,12 +81,38 @@ impl League {
         match self {
             Self::Wc => "FIFA World Cup",
             Self::Epl => "Premier League",
+            Self::Nfl => "NFL",
         }
     }
 
     /// Whether `/season start` (and related setup) may target this slug.
     pub fn supports_season(slug: &str) -> bool {
         Self::from_slug(slug).is_some()
+    }
+
+    /// Stat that breaks ties on the leaderboard, as shown to users. `None` when the
+    /// league has no tie-breaker (ties on points share a rank).
+    pub fn tiebreaker_unit(self) -> Option<&'static str> {
+        match self {
+            Self::Wc | Self::Epl => Some("goals"),
+            Self::Nfl => None,
+        }
+    }
+
+    /// Word for a level result in announcements and footers.
+    pub fn draw_label(self) -> &'static str {
+        match self {
+            Self::Wc | Self::Epl => "draw",
+            Self::Nfl => "tie",
+        }
+    }
+
+    /// Announcement suffix once a game is over.
+    pub fn finished_label(self) -> &'static str {
+        match self {
+            Self::Wc | Self::Epl => "full time",
+            Self::Nfl => "final",
+        }
     }
 
     pub fn for_season(conn: &Connection, season_id: i64) -> Result<Self, Error> {
@@ -100,11 +130,16 @@ impl League {
     }
 
     pub async fn list_teams(self, data: &Data) -> Result<Vec<CatalogTeam>, Error> {
-        let competition = crate::db::league_competition_code(self.slug());
-        let teams = crate::api::FootballDataApi::from_env(data.http.clone())
-            .fetch_teams(&competition)
-            .await?;
-        Ok(teams.into_iter().map(CatalogTeam::from_api).collect())
+        match self {
+            Self::Wc | Self::Epl => {
+                let competition = crate::db::league_competition_code(self.slug());
+                let teams = crate::api::FootballDataApi::from_env(data.http.clone())
+                    .fetch_teams(&competition)
+                    .await?;
+                Ok(teams.into_iter().map(CatalogTeam::from_api).collect())
+            }
+            Self::Nfl => nfl::teams::list_teams(data).await,
+        }
     }
 
     pub fn find_team<'a>(self, teams: &'a [CatalogTeam], query: &str) -> Option<&'a CatalogTeam> {
@@ -132,6 +167,9 @@ impl League {
             Self::Epl => format!(
                 "Couldn't find a Premier League club matching \"{team_query}\". Try the full name or three-letter code (e.g. LIV)."
             ),
+            Self::Nfl => format!(
+                "Couldn't find an NFL team matching \"{team_query}\". Try the full name, nickname, or abbreviation (e.g. Eagles or PHI)."
+            ),
         }
     }
 
@@ -149,9 +187,14 @@ impl League {
                 .iter()
                 .map(EplMatchResult::as_finished_match)
                 .collect(),
+            Self::Nfl => NflMatchResult::list_for_season(conn, season_id)?
+                .iter()
+                .map(NflMatchResult::as_finished_match)
+                .collect(),
         })
     }
 
+    /// `(tie-breaker total, player_name)` for standings; total is 0 without a pick.
     fn tiebreaker_for_standings(
         self,
         conn: &Connection,
@@ -179,6 +222,7 @@ impl League {
                 };
                 Ok((goals, pick.map(|p| p.player_name)))
             }
+            Self::Nfl => Ok((0, None)),
         }
     }
 
@@ -227,6 +271,7 @@ impl League {
                 .map(|pick| (pick.player_name, pick.team_name)),
             Self::Epl => EplTiebreakerPick::get_for_user(conn, season_id, user_id)?
                 .map(|pick| (pick.player_name, pick.team_name)),
+            Self::Nfl => None,
         })
     }
 
@@ -240,6 +285,29 @@ impl League {
         match self {
             Self::Wc => WcTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
             Self::Epl => EplTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
+            Self::Nfl => Ok(()),
+        }
+    }
+
+    fn no_tiebreaker_message(self) -> String {
+        format!(
+            "{} has no tie-breaker — members level on points share a rank.",
+            self.display_name()
+        )
+    }
+
+    /// Rosters of the given teams for `/pick-player`; `None` when the league has no tie-breaker.
+    async fn rosters_for_teams(
+        self,
+        data: &Data,
+        teams: &[(i64, String)],
+    ) -> Result<Option<Vec<RosterPlayer>>, Error> {
+        match self {
+            Self::Wc | Self::Epl => {
+                let api = crate::api::FootballDataApi::from_env(data.http.clone());
+                Ok(Some(crate::soccer::fetch_squads_for_teams(&api, teams).await?))
+            }
+            Self::Nfl => Ok(None),
         }
     }
 
@@ -250,10 +318,21 @@ impl League {
         user_id: u64,
         player: &str,
     ) -> Result<String, Error> {
-        crate::tiebreaker::pick_tiebreaker_player(data, guild_id, user_id, player, |conn,
-                                                                                     season_id,
-                                                                                     user_id,
-                                                                                     selected| {
+        if self.tiebreaker_unit().is_none() {
+            return Ok(self.no_tiebreaker_message());
+        }
+        let teams = tiebreaker::claimed_teams(data, guild_id, user_id).await?;
+        if teams.is_empty() {
+            return Ok(tiebreaker::NO_TEAMS_MESSAGE.into());
+        }
+        let Some(players) = self.rosters_for_teams(data, &teams).await? else {
+            return Ok(self.no_tiebreaker_message());
+        };
+
+        tiebreaker::resolve_pick(data, guild_id, user_id, player, &players, |conn,
+                                                                              season_id,
+                                                                              user_id,
+                                                                              selected| {
             match self {
                 Self::Wc => WcTiebreakerPick::upsert(
                     conn,
@@ -273,12 +352,14 @@ impl League {
                     selected.team_id,
                     &selected.team_name,
                 ),
+                Self::Nfl => Ok(()),
             }
         })
         .await
     }
 
-    pub fn cache_player_goals(
+    /// Cache `(player_id, total)` tie-breaker stats for a season; no-op for leagues without one.
+    pub fn cache_tiebreaker_totals(
         self,
         conn: &Connection,
         season_id: i64,
@@ -288,6 +369,7 @@ impl League {
         match self {
             Self::Wc => WcPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
             Self::Epl => EplPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
+            Self::Nfl => Ok(()),
         }
     }
 
@@ -300,6 +382,7 @@ impl League {
         match self {
             Self::Wc => WcMatchResult::score(conn, season_id, match_id),
             Self::Epl => EplMatchResult::score(conn, season_id, match_id),
+            Self::Nfl => NflMatchResult::score(conn, season_id, match_id),
         }
     }
 
@@ -312,6 +395,7 @@ impl League {
         match self {
             Self::Wc => WcProcessedMatch::is_processed(conn, season_id, match_id),
             Self::Epl => EplProcessedMatch::is_processed(conn, season_id, match_id),
+            Self::Nfl => NflProcessedGame::is_processed(conn, season_id, match_id),
         }
     }
 
@@ -324,6 +408,7 @@ impl League {
         match self {
             Self::Wc => WcProcessedMatch::mark(conn, season_id, match_id),
             Self::Epl => EplProcessedMatch::mark(conn, season_id, match_id),
+            Self::Nfl => NflProcessedGame::mark(conn, season_id, match_id),
         }
     }
 
@@ -336,41 +421,45 @@ impl League {
         match self {
             Self::Wc => WcProcessedMatch::unmark(conn, season_id, match_id),
             Self::Epl => EplProcessedMatch::unmark(conn, season_id, match_id),
+            Self::Nfl => NflProcessedGame::unmark(conn, season_id, match_id),
         }
     }
 
-    /// Persist the finished-match score. No-op when the API row lacks team ids or a full-time score.
+    /// Persist a finished game's score in the league's result table.
     pub fn upsert_match_result(
         self,
         conn: &Connection,
         season_id: i64,
-        m: &Match,
+        report: &GameReport,
     ) -> rusqlite::Result<()> {
-        let Some((home_goals, away_goals)) = full_time_score(m) else {
-            return Ok(());
-        };
-        let (Some(home_team_id), Some(away_team_id)) = (m.home_team.id, m.away_team.id) else {
-            return Ok(());
-        };
         match self {
             Self::Wc => WcMatchResult {
                 season_id,
-                match_id: m.id,
-                home_team_id,
-                away_team_id,
-                home_goals,
-                away_goals,
-                stage: m.stage.clone(),
+                match_id: report.game_id,
+                home_team_id: report.home_team_id,
+                away_team_id: report.away_team_id,
+                home_goals: report.home_score,
+                away_goals: report.away_score,
+                stage: report.stage.clone(),
             }
             .upsert(conn),
             Self::Epl => EplMatchResult {
                 season_id,
-                match_id: m.id,
-                home_team_id,
-                away_team_id,
-                home_goals,
-                away_goals,
-                matchday: m.matchday,
+                match_id: report.game_id,
+                home_team_id: report.home_team_id,
+                away_team_id: report.away_team_id,
+                home_goals: report.home_score,
+                away_goals: report.away_score,
+                matchday: report.round,
+            }
+            .upsert(conn),
+            Self::Nfl => NflMatchResult {
+                season_id,
+                game_id: report.game_id,
+                home_team_id: report.home_team_id,
+                away_team_id: report.away_team_id,
+                home_score: report.home_score,
+                away_score: report.away_score,
             }
             .upsert(conn),
         }
@@ -385,6 +474,7 @@ impl League {
         match self {
             Self::Wc => wc::poll::poll(data, http, seasons).await,
             Self::Epl => epl::poll::poll(data, http, seasons).await,
+            Self::Nfl => nfl::poll::poll(data, http, seasons).await,
         }
     }
 }
@@ -407,21 +497,33 @@ mod tests {
             League::from_slug("epl").unwrap().display_name(),
             "Premier League"
         );
+        assert_eq!(League::from_slug("nfl"), Some(League::Nfl));
+        assert_eq!(League::from_slug("nfl").unwrap().slug(), "nfl");
+        assert_eq!(League::from_slug("nfl").unwrap().display_name(), "NFL");
+        assert!(League::supports_season("nfl"));
     }
 
     #[test]
     fn from_slug_rejects_unknown_and_catalog_only_slugs() {
-        assert_eq!(League::from_slug("nfl"), None);
         assert_eq!(League::from_slug("nba"), None);
         assert_eq!(League::from_slug("unknown"), None);
-        assert!(!League::supports_season("nfl"));
+        assert!(!League::supports_season("nba"));
         assert!(League::supports_season("wc"));
         assert!(League::supports_season("epl"));
     }
 
     #[test]
     fn all_lists_every_variant() {
-        assert_eq!(League::ALL, &[League::Wc, League::Epl]);
+        assert_eq!(League::ALL, &[League::Wc, League::Epl, League::Nfl]);
+    }
+
+    #[test]
+    fn user_facing_labels_follow_the_sport() {
+        assert_eq!(League::Wc.tiebreaker_unit(), Some("goals"));
+        assert_eq!(League::Nfl.tiebreaker_unit(), None);
+        assert_eq!(League::Nfl.draw_label(), "tie");
+        assert_eq!(League::Nfl.finished_label(), "final");
+        assert_eq!(League::Epl.finished_label(), "full time");
     }
 
     #[test]
@@ -435,5 +537,14 @@ mod tests {
         assert_eq!(League::Wc.find_team(&teams, "bra").unwrap().id, 1);
         assert_eq!(League::Wc.find_team(&teams, "Brazil").unwrap().id, 1);
         assert!(League::Wc.find_team(&teams, "zzz").is_none());
+
+        let nfl = vec![CatalogTeam {
+            id: 21,
+            name: "Philadelphia Eagles".into(),
+            short_name: Some("Eagles".into()),
+            code: Some("PHI".into()),
+        }];
+        assert_eq!(League::Nfl.find_team(&nfl, "eagles").unwrap().id, 21);
+        assert_eq!(League::Nfl.find_team(&nfl, "phi").unwrap().id, 21);
     }
 }

@@ -1,43 +1,10 @@
-use std::fmt;
 use std::sync::OnceLock;
 
-use reqwest::StatusCode;
 use serde::Deserialize;
 
+use super::{ApiError, check_response};
+
 const BASE_URL: &str = "https://api.football-data.org/v4";
-const RATE_LIMIT_MESSAGE: &str =
-    "The football data API is rate-limited right now. Please try again later.";
-
-#[derive(Debug)]
-pub enum ApiError {
-    RateLimited,
-    Request(reqwest::Error),
-}
-
-impl fmt::Display for ApiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ApiError::RateLimited => write!(f, "{RATE_LIMIT_MESSAGE}"),
-            ApiError::Request(error) => write!(f, "{error}"),
-        }
-    }
-}
-
-impl std::error::Error for ApiError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            ApiError::RateLimited => None,
-            ApiError::Request(error) => Some(error),
-        }
-    }
-}
-
-fn check_response(response: reqwest::Response) -> Result<reqwest::Response, ApiError> {
-    if response.status() == StatusCode::TOO_MANY_REQUESTS {
-        return Err(ApiError::RateLimited);
-    }
-    response.error_for_status().map_err(ApiError::Request)
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

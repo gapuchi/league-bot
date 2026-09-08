@@ -23,7 +23,7 @@ Collect (or infer from the request):
 3. **Display name** — user-facing (`NFL`, `NBA`).
 4. **Data source** — API + env var name(s).
 5. **Capabilities** — which of: teams/claim, poll + announce, standings, tie-breaker, league-only commands.
-6. **Schema** — new tables needed, or reuse existing `nfl_*` / `nba_*` stubs in `migrate.rs`.
+6. **Schema** — new tables needed, or reuse the existing `nba_*` stubs in `migrate.rs`.
 
 Do not invent an API provider or scoring rules when unclear — ask briefly, then proceed.
 
@@ -42,7 +42,7 @@ Work bottom-up. Keep host files free of league-specific SQL/API types.
 
 ### 1. Catalog + schema
 
-- Ensure `seed_catalog` in `src/db/migrate.rs` has the slug (nfl/nba already seeded).
+- Ensure `seed_catalog` in `src/db/migrate.rs` has the slug (nba already seeded).
 - If tables are missing: extend greenfield `CREATE_SCHEMA` (no upgrade migrations; wipe DB if stale); accessors under `src/db/<slug>/`; re-export from `src/db/mod.rs`.
 - Shared tables only: `leagues`, `seasons`, `guild_config`, `teams`, `registrations`.
 
@@ -55,7 +55,7 @@ For **football-data.org soccer**, shared teams/standings/tie-break/poll ingest l
 | `poll.rs` | Delegate match ingest to `soccer_poll`; league-only announce hooks (e.g. WC eliminations) |
 | optional | `remaining.rs`, other league-only use cases |
 
-For **non-soccer** leagues, mirror the full module set as needed (API client, teams, standings, poll, tie-break).
+For **non-soccer** leagues, follow **NFL** (`src/nfl/`, `src/api/espn.rs`, `src/db/nfl/`): API client in `api/`, a `season`/calendar module that maps provider games into `game_poll::GameReport`, `teams` → `CatalogTeam`, and a `poll` that calls `game_poll::process_game`. Standings, scoring, and announce are already shared. A league may opt out of tie-breakers (`tiebreaker_unit` → `None`, no-op tie-break arms) as NFL does; to opt in, supply rosters as `RosterPlayer` via `rosters_for_teams` and the pick-player flow is shared too.
 
 Export via `src/<slug>/mod.rs`. Register `pub mod <slug>;` in `src/lib.rs`.
 
@@ -67,11 +67,12 @@ Add variant and update **every** exhaustive match:
 
 - `ALL`
 - `from_slug` / `slug` / `display_name`
+- `tiebreaker_unit` (`Option`; `None` = no tie-breaker) / `draw_label` / `finished_label` (user-facing sport words)
 - `list_teams`, `team_not_found_message`
-- `standings`, `user_points`
-- `tiebreaker_value_for_user`, `tiebreaker_pick_for_user`, `clear_picks_for_team` (no-op / empty `Ok` if unused)
+- `standings`, `user_points` (via `finished_matches`)
+- `tiebreaker_for_standings`, `tiebreaker_pick_for_user`, `clear_picks_for_team`, `rosters_for_teams`, `pick_tiebreaker_player` upsert arm (no-op / empty `Ok` if unused)
+- Result store surface used by `game_poll`: `upsert_match_result(GameReport)`, `stored_match_score`, `is/mark/unmark_match_processed`, `cache_tiebreaker_totals`
 - `poll`
-- Soccer poll DB surface: `finished_matches`, `upsert_match_result`, processed-match helpers, `cache_player_goals` (or no-op arms for non-soccer)
 
 Extend unit tests: slug resolves; unknown still `None`; `ALL` includes the new variant.
 
@@ -85,8 +86,9 @@ Extend unit tests: slug resolves; unknown still `None`; `ALL` includes the new v
 ```rust
 fn commands_for(league: League) -> Vec<...> {
     match league {
-        League::Wc => vec![remaining(), pick_player()],
+        League::Wc => vec![remaining()],
         League::Nfl => vec![/* nfl-only cmds, or vec![] */],
+        League::Nba => vec![],
     }
 }
 ```
@@ -94,7 +96,7 @@ fn commands_for(league: League) -> Vec<...> {
 ### 5. Env + startup
 
 - Document in `.env.example` and `README.md` (readme-sync).
-- Fail-fast in `main` only if this league is compiled in and the token is required at boot (same pattern as `FOOTBALL_DATA_API_TOKEN` for wc).
+- Fail-fast in `main` only if this league is compiled in and the token is required at boot (same pattern as `FOOTBALL_DATA_API_TOKEN` for wc). Keyless providers (ESPN for NFL) add nothing here.
 
 ### 6. Docs
 
@@ -116,7 +118,7 @@ Manual smoke: `/config season` with the new slug → `/config channel` → claim
 - [ ] `/config season` accepts the slug; catalog-only slugs still rejected
 - [ ] Shared commands work for a focused season of this league
 - [ ] Poller calls `League::poll` for live seasons (or explicitly no-ops with a clear outcome)
-- [ ] No new `Wc*` / league SQL types in `registration.rs`, host `standings.rs`, `types.rs`, `db/registration.rs`, host `poller.rs`
+- [ ] No new `Wc*` / `Nfl*` / league SQL types in `registration.rs`, host `standings.rs`, `game_poll.rs`, `types.rs`, `db/registration.rs`, host `poller.rs`
 - [ ] Tests + clippy clean; README/env updated if user-visible
 
 ## Do not

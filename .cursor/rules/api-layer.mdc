@@ -1,25 +1,23 @@
 ---
-description: football-data.org API client and domain layer conventions
-globs: src/api/**,src/soccer.rs
+description: Upstream API clients (football-data.org, ESPN) and domain layer conventions
+globs: src/api/**,src/soccer.rs,src/nfl/season.rs
 alwaysApply: false
 ---
 
 # API layer
 
-`src/api/football_data.rs` is the thin HTTP wrapper around football-data.org.
+`src/api/football_data.rs` wraps football-data.org; `src/api/espn.rs` wraps ESPN's public NFL endpoints. `ApiError` + rate-limit handling are shared in `src/api/mod.rs`.
 
 **Belongs in `api/`:**
-- `FootballDataApi` methods that map to endpoints
-- `ApiError`, rate-limit handling
-- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`)
-- Shared client construction (`FootballDataApi::from_env`)
+- Client methods that map 1:1 to endpoints (`FootballDataApi`, `EspnNflApi`)
+- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`; `NflTeam`, `NflGame`) and the string→id plumbing ESPN needs
+- Shared client construction (`FootballDataApi::from_env`, `EspnNflApi::new` with its required `User-Agent`)
 
-**Belongs in `soccer.rs` (not `api/`):**
-- `find_players`, squad fetch orchestration
-- `fetch_squads_for_teams` (multi-call orchestration + role filter)
-- `full_time_score` (interpreting nullable API score fields)
-- `SquadPlayerMatch`, team classification helpers
+**Belongs in domain modules (not `api/`):**
+- `soccer.rs`: `fetch_squads_for_teams` (multi-call orchestration + role filter), `full_time_score`, team classification helpers
+- `nfl/season.rs`: season-year rollover, scoreboard date range, `game_report` (completed + pool-eligible + scored), round titles
+- `tiebreaker.rs`: `RosterPlayer`, `find_players` (sport-agnostic)
 
 Team name lookup for registration uses `League::find_team` on `CatalogTeam`.
 
-Soccer league modules construct the client with `FootballDataApi::from_env(data.http.clone())`.
+Soccer league modules construct the client with `FootballDataApi::from_env(data.http.clone())`; NFL uses `EspnNflApi::new(data.http.clone())`.

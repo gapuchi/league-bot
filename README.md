@@ -2,12 +2,12 @@
 
 Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in a configured channel.
 
-The bot can serve **multiple Discord servers** at once. Each server has its own team claims, standings, announcement channel, and league selection. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup and Premier League are fully supported today; NFL and NBA pools are coming soon.
+The bot can serve **multiple Discord servers** at once. Each server has its own team claims, standings, announcement channel, and league selection. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, and NFL are fully supported today; NBA pools are coming soon.
 
 ## Setup
 
 1. Create a [Discord application](https://discord.com/developers/applications) and bot token.
-2. Get a free API token from [football-data.org](https://www.football-data.org/client/register).
+2. Get a free API token from [football-data.org](https://www.football-data.org/client/register) (soccer leagues). NFL data comes from ESPN's public endpoints and needs no key.
 3. Copy `.env.example` to `.env` and fill in the values.
 4. Invite the bot to your server. In the [Discord Developer Portal](https://discord.com/developers/applications) → **OAuth2** → **URL Generator**, select:
    - **Scopes:** `bot`, `applications.commands`
@@ -30,7 +30,7 @@ Slash commands are registered automatically in each guild the bot joins on start
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DISCORD_TOKEN` | yes | Discord bot token |
-| `FOOTBALL_DATA_API_TOKEN` | yes | football-data.org API token |
+| `FOOTBALL_DATA_API_TOKEN` | yes | football-data.org API token (World Cup, Premier League) |
 | `DATABASE_PATH` | no | SQLite database path (default: `league_bot.db`) |
 
 ## Configuration
@@ -86,7 +86,13 @@ The background poller fetches finished matches and scorer totals from football-d
 
 ### NFL (`nfl`)
 
-Coming soon.
+Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Eagles`, `PHI`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
+
+**Scoring** — same points per game as the soccer leagues: win 3, tie 1, loss 0. Regular-season and playoff games count; preseason and the Pro Bowl do not.
+
+**Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NFL seasons.
+
+The background poller fetches finished games from ESPN's public NFL API (no API key). Every live NFL season tracks the current NFL calendar season (March rolls over to the next season), so start one season per year.
 
 ### NBA (`nba`)
 

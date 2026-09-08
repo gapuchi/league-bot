@@ -1,4 +1,4 @@
-//! Macros for soccer league tables that only differ by table/type name.
+//! Macros for league tables that only differ by table/type name (same columns as the wc/epl originals).
 
 macro_rules! define_processed_match {
     ($name:ident, $table:literal) => {

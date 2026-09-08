@@ -50,5 +50,6 @@ fn commands_for(
     match league {
         League::Wc => vec![remaining()],
         League::Epl => vec![],
+        League::Nfl => vec![],
     }
 }

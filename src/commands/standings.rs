@@ -15,11 +15,12 @@ use super::helpers::guild_id;
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
-    let (league_name, rows) = {
+    let (league, rows) = {
         let conn = ctx.data().db.lock().await;
         let (season, league) = League::for_guild(&conn, guild_id)?;
-        (league.display_name(), league.standings(&conn, season.id)?)
+        (league, league.standings(&conn, season.id)?)
     };
+    let league_name = league.display_name();
 
     if rows.is_empty() {
         ctx.say("No standings yet — pick teams with `/draft pick` first.")
@@ -27,10 +28,10 @@ pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     }
 
-    let footer = standings_footer();
+    let footer = standings_footer(league.draw_label(), league.tiebreaker_unit());
     let ranks = standings_ranks(&rows);
     let summary_lines = format_standings_summary_lines(&rows, &ranks);
-    let detail_lines = format_standings_detail_lines(&rows, &ranks);
+    let detail_lines = format_standings_detail_lines(&rows, &ranks, league.tiebreaker_unit());
 
     let summary_embed = serenity::CreateEmbed::default()
         .title(format!("{league_name} standings"))
