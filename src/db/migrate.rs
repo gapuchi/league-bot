@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS nfl_match_results (
     away_team_id            INTEGER NOT NULL,
     home_score              INTEGER NOT NULL,
     away_score              INTEGER NOT NULL,
+    week                    INTEGER,
     finished_at             TEXT,
     PRIMARY KEY (season_id, game_id)
 );

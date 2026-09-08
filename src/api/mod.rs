@@ -1,9 +1,11 @@
+mod espn;
 mod football_data;
 
 use std::fmt;
 
 use reqwest::StatusCode;
 
+pub use espn::*;
 pub use football_data::*;
 
 const RATE_LIMIT_MESSAGE: &str =
