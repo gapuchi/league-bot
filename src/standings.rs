@@ -1,22 +1,30 @@
 use crate::db::Registration;
-use crate::scoring::{self, DRAW_POINTS, FinishedMatch, LOSS_POINTS, WIN_POINTS};
+use crate::scoring::{self, FinishedMatch, ScoringRules};
 use std::collections::HashMap;
 
 /// League-agnostic standings row returned across the `League` seam.
 pub struct StandingRow {
     pub user_id: u64,
-    pub points: i64,
-    pub teams: Vec<(String, i64)>,
+    pub points: f64,
+    pub teams: Vec<(String, f64)>,
     /// Tie-breaker stat total (e.g. goals) — see `League::tiebreaker_unit`; 0 when the
     /// league has none.
     pub tiebreaker_value: i64,
     pub tiebreaker_player: Option<String>,
 }
 
-/// `draw_label` / `tiebreaker_unit` come from the focused `League` (e.g. `draw`/`goals`).
-pub fn standings_footer(draw_label: &str, tiebreaker_unit: Option<&str>) -> String {
+/// `draw_label` / `tiebreaker_unit` come from the focused `League` (e.g. `draw`/`goals`);
+/// `rules` supply the per-league points shown in the footer.
+pub fn standings_footer(
+    rules: ScoringRules,
+    draw_label: &str,
+    tiebreaker_unit: Option<&str>,
+) -> String {
     let draw = capitalize_first(draw_label);
-    let mut footer = format!("Win {WIN_POINTS} · {draw} {DRAW_POINTS} · Loss {LOSS_POINTS}");
+    let mut footer = format!(
+        "Win {} · {draw} {} · Loss {}",
+        rules.win, rules.draw, rules.loss
+    );
     if let Some(unit) = tiebreaker_unit {
         footer.push_str(&format!(" · TB = tie-breaker {unit}"));
     }
@@ -35,6 +43,7 @@ fn capitalize_first(word: &str) -> String {
 ///
 /// `tiebreaker_for` returns `(goals, player_name)` for each user.
 pub fn build_rows(
+    rules: ScoringRules,
     matches: &[FinishedMatch],
     registrations: &[Registration],
     mut tiebreaker_for: impl FnMut(u64) -> rusqlite::Result<(i64, Option<String>)>,
@@ -53,20 +62,20 @@ pub fn build_rows(
         .into_iter()
         .map(|(user_id, (team_ids, team_names))| {
             let (tiebreaker_value, tiebreaker_player) = tiebreaker_for(user_id)?;
-            let mut teams: Vec<(String, i64)> = team_ids
+            let mut teams: Vec<(String, f64)> = team_ids
                 .iter()
                 .zip(&team_names)
                 .map(|(team_id, team_name)| {
                     (
                         team_name.clone(),
-                        scoring::points_for_team(*team_id, matches),
+                        scoring::points_for_team(rules, *team_id, matches),
                     )
                 })
                 .collect();
             teams.sort_by(|a, b| a.0.cmp(&b.0));
             Ok(StandingRow {
                 user_id,
-                points: scoring::points_for_teams(&team_ids, matches),
+                points: scoring::points_for_teams(rules, &team_ids, matches),
                 teams,
                 tiebreaker_value,
                 tiebreaker_player,
@@ -76,7 +85,7 @@ pub fn build_rows(
 
     rows.sort_by(|a, b| {
         b.points
-            .cmp(&a.points)
+            .total_cmp(&a.points)
             .then_with(|| b.tiebreaker_value.cmp(&a.tiebreaker_value))
             .then_with(|| a.user_id.cmp(&b.user_id))
     });
@@ -84,11 +93,12 @@ pub fn build_rows(
 }
 
 pub fn points_for_user_teams(
+    rules: ScoringRules,
     matches: &[FinishedMatch],
     registrations: &[Registration],
-) -> i64 {
+) -> f64 {
     let team_ids: Vec<i64> = registrations.iter().map(|r| r.team_id).collect();
-    scoring::points_for_teams(&team_ids, matches)
+    scoring::points_for_teams(rules, &team_ids, matches)
 }
 
 pub fn format_standing_summary(rank: usize, row: &StandingRow) -> String {
@@ -142,7 +152,9 @@ pub fn standings_ranks(rows: &[StandingRow]) -> Vec<usize> {
     let mut i = 0;
     while i < rows.len() {
         let mut j = i;
-        while j + 1 < rows.len() && rows[j].points == rows[j + 1].points {
+        while j + 1 < rows.len()
+            && rows[j].points.total_cmp(&rows[j + 1].points) == std::cmp::Ordering::Equal
+        {
             j += 1;
         }
         let rank = i + 1;

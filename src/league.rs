@@ -9,7 +9,7 @@ use crate::{
     epl,
     game_poll::GameReport,
     nfl,
-    scoring::FinishedMatch,
+    scoring::{self, FinishedMatch, ScoringRules},
     standings::{self, StandingRow},
     tiebreaker::{self, RosterPlayer},
     types::{Data, Error},
@@ -96,6 +96,14 @@ impl League {
         match self {
             Self::Wc | Self::Epl => Some("goals"),
             Self::Nfl => None,
+        }
+    }
+
+    /// Points awarded for win / draw / loss on this league's leaderboard.
+    pub fn scoring(self) -> ScoringRules {
+        match self {
+            Self::Wc | Self::Epl => scoring::SOCCER,
+            Self::Nfl => scoring::NFL,
         }
     }
 
@@ -232,6 +240,7 @@ impl League {
         season_id: i64,
     ) -> rusqlite::Result<Vec<StandingRow>> {
         standings::build_rows(
+            self.scoring(),
             &self.finished_matches(conn, season_id)?,
             &Registration::list_for_season(conn, season_id)?,
             |user_id| self.tiebreaker_for_standings(conn, season_id, user_id),
@@ -243,8 +252,9 @@ impl League {
         conn: &Connection,
         season_id: i64,
         user_id: u64,
-    ) -> rusqlite::Result<i64> {
+    ) -> rusqlite::Result<f64> {
         Ok(standings::points_for_user_teams(
+            self.scoring(),
             &self.finished_matches(conn, season_id)?,
             &Registration::list_for_user(conn, season_id, user_id)?,
         ))

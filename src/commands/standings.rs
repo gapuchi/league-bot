@@ -28,7 +28,11 @@ pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     }
 
-    let footer = standings_footer(league.draw_label(), league.tiebreaker_unit());
+    let footer = standings_footer(
+        league.scoring(),
+        league.draw_label(),
+        league.tiebreaker_unit(),
+    );
     let ranks = standings_ranks(&rows);
     let summary_lines = format_standings_summary_lines(&rows, &ranks);
     let detail_lines = format_standings_detail_lines(&rows, &ranks, league.tiebreaker_unit());
