@@ -7,7 +7,6 @@ mod migrate;
 mod nfl;
 mod registration;
 mod season;
-mod team;
 mod wc;
 
 use rusqlite::Connection;

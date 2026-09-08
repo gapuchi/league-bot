@@ -72,9 +72,6 @@ pub struct NflCompetitor {
 #[derive(Debug, Clone)]
 pub struct NflGame {
     pub id: i64,
-    pub name: String,
-    pub date: String,
-    pub season_year: i64,
     pub season_type: i64,
     pub week: Option<i64>,
     pub completed: bool,
@@ -111,8 +108,6 @@ struct ScoreboardResponse {
 struct Event {
     #[serde(deserialize_with = "string_i64")]
     id: i64,
-    name: String,
-    date: String,
     season: EventSeason,
     week: Option<EventWeek>,
     competitions: Vec<Competition>,
@@ -120,7 +115,6 @@ struct Event {
 
 #[derive(Deserialize)]
 struct EventSeason {
-    year: i64,
     #[serde(rename = "type")]
     season_type: i64,
 }
@@ -199,9 +193,6 @@ impl EspnNflApi {
                 let competition = event.competitions.into_iter().next()?;
                 Some(NflGame {
                     id: event.id,
-                    name: event.name,
-                    date: event.date,
-                    season_year: event.season.year,
                     season_type: event.season.season_type,
                     week: event.week.map(|week| week.number),
                     completed: competition.status.status_type.completed,

@@ -2,7 +2,6 @@ mod config;
 mod draft;
 mod helpers;
 mod meta;
-mod nfl;
 mod pick_player;
 mod registration;
 mod season;

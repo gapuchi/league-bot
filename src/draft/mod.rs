@@ -354,12 +354,6 @@ pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Erro
     Ok("Draft ended. Roster is **frozen**.".into())
 }
 
-pub async fn current_picker_for_guild(data: &Data, guild_id: u64) -> Result<Option<u64>, Error> {
-    Ok(load_status(data, guild_id)
-        .await?
-        .and_then(|s| s.on_the_clock))
-}
-
 async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, Error> {
     let (season, league, session, order) = {
         let conn = data.db.lock().await;

@@ -116,9 +116,6 @@ mod tests {
     fn game(season_type: i64, week: Option<i64>, completed: bool) -> NflGame {
         NflGame {
             id: 401,
-            name: "Team 6 at Team 21".into(),
-            date: "2025-09-05T00:20Z".into(),
-            season_year: 2025,
             season_type,
             week,
             completed,

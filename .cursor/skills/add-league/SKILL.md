@@ -23,7 +23,7 @@ Collect (or infer from the request):
 3. **Display name** — user-facing (`NFL`, `NBA`).
 4. **Data source** — API + env var name(s).
 5. **Capabilities** — which of: teams/claim, poll + announce, standings, tie-breaker, league-only commands.
-6. **Schema** — new tables needed, or reuse the existing `nba_*` stubs in `migrate.rs`.
+6. **Schema** — which per-league tables the league needs (add them to `migrate.rs` with the league; no stubs exist ahead of time).
 
 Do not invent an API provider or scoring rules when unclear — ask briefly, then proceed.
 

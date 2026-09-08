@@ -6,8 +6,7 @@ SQLite persistence for Discord prediction seasons. A **season** is one Discord g
 
 ### Catalog
 
-- **League** — Sport catalog entry (`wc`, `epl`, `nba`, `nfl`). Seeded on fresh schema init.
-- **Team** — Team name lookup keyed by `(league_id, team_id)`. Upserted when users register.
+- **League** — Sport catalog entry (`wc`, `epl`, `nba`, `nfl`). Seeded on fresh schema init. `nba` is catalog-only (no `League` variant, no tables) so `/season start nba` can answer "not supported yet".
 
 ### Guild configuration
 
@@ -17,35 +16,32 @@ SQLite persistence for Discord prediction seasons. A **season** is one Discord g
 
 ### Gameplay (per season)
 
-- **Registration** — A user claims a team in a season. One owner per team (`season_id`, `team_id`).
-- **Match result** — Finished game scores and metadata (`wc_match_results`, `epl_match_results`, `nba_match_results`, `nfl_match_results`).
-- **Processed flag** — Idempotency marker for games the poller already announced and scored (`wc_processed_matches`, `epl_processed_matches`, `nba_processed_games`, `nfl_processed_games`).
+- **Registration** — A user claims a team in a season. One owner per team (`season_id`, `team_id`). The team name is stored on the row; there is no separate team table.
+- **Match result** — Finished game scores and metadata (`wc_match_results`, `epl_match_results`, `nfl_match_results`).
+- **Processed flag** — Idempotency marker for games the poller already announced and scored (`wc_processed_matches`, `epl_processed_matches`, `nfl_processed_games`).
 - **Announced elimination** — Idempotency marker for teams the poller already posted as eliminated (`wc_announced_eliminations`).
-- **Tiebreaker pick** — One player pick per user per season for standings tie-breaks (`wc_tiebreaker_picks`, `epl_tiebreaker_picks`, `nba_tiebreaker_picks`, `nfl_tiebreaker_picks`).
-- **Player stat total** — Cached player stats for tie-breakers (`wc_player_goal_totals`, `epl_player_goal_totals`, `nba_player_points_totals`, `nfl_player_touchdown_totals`). Keyed by `(season_id, player_id)`. NFL has no tie-breaker, so `nfl_tiebreaker_picks` and `nfl_player_touchdown_totals` exist in the schema but have no accessors.
+- **Tiebreaker pick** — One player pick per user per season for standings tie-breaks (`wc_tiebreaker_picks`, `epl_tiebreaker_picks`). NFL has no tie-breaker and no tie-breaker tables.
+- **Player stat total** — Cached player stats for tie-breakers (`wc_player_goal_totals`, `epl_player_goal_totals`). Keyed by `(season_id, player_id)`.
 
-World Cup, Premier League, and NFL accessors live under `db/wc/`, `db/epl/`, and `db/nfl/`. Same-shape tables (`*_processed_matches`, `*_tiebreaker_picks`, `*_player_goal_totals`) are generated from `league_macros.rs`; `match_result` is hand-written per league, as is the NFL `processed_game` accessor whose `game_id` column differs. NBA tables exist in the schema for a future league.
+World Cup, Premier League, and NFL accessors live under `db/wc/`, `db/epl/`, and `db/nfl/`. Same-shape tables (`*_processed_matches`, `*_tiebreaker_picks`, `*_player_goal_totals`) are generated from `league_macros.rs`; `match_result` is hand-written per league, as is the NFL `processed_game` accessor whose `game_id` column differs. Tables are added when a league is implemented, not ahead of time.
 
 ## Relationships
 
 ```mermaid
 erDiagram
     leagues ||--o{ seasons : has
-    leagues ||--o{ teams : has
     seasons ||--o{ registrations : has
     seasons ||--o{ wc_match_results : has
     seasons ||--o{ wc_processed_matches : has
     seasons ||--o{ wc_announced_eliminations : has
     seasons ||--o{ wc_tiebreaker_picks : has
     seasons ||--o{ wc_player_goal_totals : has
-    seasons ||--o{ nba_match_results : has
-    seasons ||--o{ nba_processed_games : has
-    seasons ||--o{ nba_tiebreaker_picks : has
-    seasons ||--o{ nba_player_points_totals : has
+    seasons ||--o{ epl_match_results : has
+    seasons ||--o{ epl_processed_matches : has
+    seasons ||--o{ epl_tiebreaker_picks : has
+    seasons ||--o{ epl_player_goal_totals : has
     seasons ||--o{ nfl_match_results : has
     seasons ||--o{ nfl_processed_games : has
-    seasons ||--o{ nfl_tiebreaker_picks : has
-    seasons ||--o{ nfl_player_touchdown_totals : has
     seasons ||--o| guild_config : "default for guild"
 
     leagues {

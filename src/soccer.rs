@@ -548,14 +548,10 @@ mod tests {
             home_team: MatchTeam {
                 id: home_id,
                 name: home_id.map(|id| format!("Home {id}")),
-                short_name: None,
-                tla: None,
             },
             away_team: MatchTeam {
                 id: away_id,
                 name: away_id.map(|id| format!("Away {id}")),
-                short_name: None,
-                tla: None,
             },
             score: Score {
                 full_time: ScoreDetail {
@@ -593,14 +589,10 @@ mod tests {
             home_team: MatchTeam {
                 id: Some(home_id),
                 name: Some(format!("Home {home_id}")),
-                short_name: None,
-                tla: None,
             },
             away_team: MatchTeam {
                 id: Some(away_id),
                 name: Some(format!("Away {away_id}")),
-                short_name: None,
-                tla: None,
             },
             score: Score {
                 full_time: ScoreDetail {
@@ -902,14 +894,10 @@ mod tests {
             home_team: MatchTeam {
                 id: Some(1),
                 name: Some("France".into()),
-                short_name: None,
-                tla: None,
             },
             away_team: MatchTeam {
                 id: Some(2),
                 name: Some("Portugal".into()),
-                short_name: None,
-                tla: None,
             },
             score: Score {
                 full_time: ScoreDetail {
