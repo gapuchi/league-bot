@@ -1,6 +1,6 @@
 mod order;
 
-pub use order::next_picker;
+pub use order::{max_draft_picks, next_picker, teams_per_player};
 
 use rand::seq::SliceRandom;
 
@@ -22,6 +22,8 @@ pub struct DraftStatus {
     pub session_status: DraftSessionStatus,
     pub roster_phase: RosterPhase,
     pub remaining_teams: usize,
+    pub picks_until_complete: usize,
+    pub teams_per_player: usize,
 }
 
 /// Result of a draft pick attempt (success or soft failure).
@@ -33,6 +35,7 @@ pub enum PickOutcome {
         beneficiary_id: u64,
         remaining_teams: usize,
         next_on_clock: Option<u64>,
+        teams_per_player: usize,
     },
 }
 
@@ -43,8 +46,9 @@ impl PickOutcome {
             Self::Picked {
                 team_name,
                 beneficiary_id,
-                remaining_teams: _,
+                remaining_teams: 0,
                 next_on_clock: None,
+                teams_per_player: _,
             } => format!(
                 "**{team_name}** drafted by <@{beneficiary_id}>.\n\nAll teams are taken — draft complete. Roster is **frozen**."
             ),
@@ -52,7 +56,17 @@ impl PickOutcome {
                 team_name,
                 beneficiary_id,
                 remaining_teams,
+                next_on_clock: None,
+                teams_per_player,
+            } => format!(
+                "**{team_name}** drafted by <@{beneficiary_id}>.\n\nDraft complete — each player has **{teams_per_player}** team(s) ({remaining_teams} undrafted). Roster is **frozen**."
+            ),
+            Self::Picked {
+                team_name,
+                beneficiary_id,
+                remaining_teams,
                 next_on_clock: Some(next),
+                teams_per_player: _,
             } => format!(
                 "**{team_name}** drafted by <@{beneficiary_id}>.\n\nOn the clock: <@{next}> · {remaining_teams} team(s) left."
             ),
@@ -99,6 +113,20 @@ pub async fn start_for_guild(
         }
     }
 
+    let league = {
+        let conn = data.db.lock().await;
+        League::for_season(&conn, season.id)?
+    };
+    let api_teams = league.list_teams(data).await?;
+    let per_player = teams_per_player(api_teams.len(), user_ids.len());
+    if per_player == 0 {
+        return Ok(format!(
+            "Not enough teams for a full draft round ({} player(s), {} team(s) in the pool).",
+            user_ids.len(),
+            api_teams.len()
+        ));
+    }
+
     {
         let mut rng = rand::rng();
         user_ids.shuffle(&mut rng);
@@ -129,7 +157,7 @@ pub async fn start_for_guild(
         .join("\n");
 
     Ok(format!(
-        "Snake draft started (order randomized).\n\n{order_line}\n\nOn the clock: <@{on_clock}> — use `/draft pick`."
+        "Snake draft started (order randomized). Each player will draft **{per_player}** team(s).\n\n{order_line}\n\nOn the clock: <@{on_clock}> — use `/draft pick`."
     ))
 }
 
@@ -155,12 +183,14 @@ pub async fn status_for_guild(data: &Data, guild_id: u64) -> Result<String, Erro
     };
 
     Ok(format!(
-        "**Draft status** (`{}`, phase `{}`)\nPick #{} · On the clock: {} · {} team(s) left\n\nOrder:\n{order_line}",
+        "**Draft status** (`{}`, phase `{}`)\nPick #{} · On the clock: {} · {} team(s) left · {} pick(s) until roster freezes ({} per player)\n\nOrder:\n{order_line}",
         status.order_kind.as_str(),
         status.roster_phase.as_str(),
         status.pick_index + 1,
         clock,
         status.remaining_teams,
+        status.picks_until_complete,
+        status.teams_per_player,
     ))
 }
 
@@ -171,7 +201,7 @@ pub async fn pick_for_user(
     user_id: u64,
     team_query: &str,
 ) -> Result<PickOutcome, Error> {
-    let (season_id, league, order, order_kind) = {
+    let (season_id, league, order, order_kind, player_count) = {
         let conn = data.db.lock().await;
         let (season, league) = League::for_guild(&conn, guild_id)?;
         if season.roster_phase != RosterPhase::Drafting {
@@ -191,13 +221,30 @@ pub async fn pick_for_user(
             return Ok(PickOutcome::Notice("This draft is already complete.".into()));
         }
         let order = DraftParticipant::user_ids_ordered(&conn, season.id)?;
-        (season.id, league, order, session.order_kind)
+        let player_count = order.len();
+        (
+            season.id,
+            league,
+            order,
+            session.order_kind,
+            player_count,
+        )
     };
+
+    let api_teams = league.list_teams(data).await?;
+    let team_count = api_teams.len();
+    let per_player = teams_per_player(team_count, player_count);
+    let max_picks = max_draft_picks(team_count, player_count);
 
     let pick_index = {
         let conn = data.db.lock().await;
         Registration::list_for_season(&conn, season_id)?.len()
     };
+    if pick_index >= max_picks {
+        return Ok(PickOutcome::Notice(
+            "This draft has reached its pick limit. Roster should be frozen.".into(),
+        ));
+    }
     let Some(on_clock) = next_picker(&order, pick_index, order_kind) else {
         return Ok(PickOutcome::Notice("Draft order is empty.".into()));
     };
@@ -208,7 +255,6 @@ pub async fn pick_for_user(
         )));
     }
 
-    let api_teams = league.list_teams(data).await?;
     let Some(selected) = league.find_team(&api_teams, team_query) else {
         return Ok(PickOutcome::Notice(
             league.team_not_found_message(team_query),
@@ -233,15 +279,17 @@ pub async fn pick_for_user(
     }
 
     let remaining = count_unclaimed(data, guild_id, league).await?;
-    if remaining == 0 {
+    let picks_after = pick_index + 1;
+    if picks_after >= max_picks || remaining == 0 {
         let conn = data.db.lock().await;
         DraftSession::set_status(&conn, season_id, DraftSessionStatus::Complete)?;
         Season::set_roster_phase(&conn, season_id, RosterPhase::Frozen)?;
         return Ok(PickOutcome::Picked {
             team_name: selected.name.clone(),
             beneficiary_id: user_id,
-            remaining_teams: 0,
+            remaining_teams: remaining,
             next_on_clock: None,
+            teams_per_player: per_player,
         });
     }
 
@@ -253,6 +301,7 @@ pub async fn pick_for_user(
         beneficiary_id: user_id,
         remaining_teams: remaining,
         next_on_clock: Some(next),
+        teams_per_player: per_player,
     })
 }
 
@@ -376,12 +425,17 @@ async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, 
         let conn = data.db.lock().await;
         Registration::list_for_season(&conn, season.id)?.len()
     };
-    let on_the_clock = if session.status == DraftSessionStatus::Active {
+    let remaining_teams = count_unclaimed(data, guild_id, league).await?;
+    let team_count = remaining_teams + pick_index;
+    let player_count = order.len();
+    let max_picks = max_draft_picks(team_count, player_count);
+    let per_player = teams_per_player(team_count, player_count);
+    let picks_until_complete = max_picks.saturating_sub(pick_index);
+    let on_the_clock = if session.status == DraftSessionStatus::Active && pick_index < max_picks {
         next_picker(&order, pick_index, session.order_kind)
     } else {
         None
     };
-    let remaining_teams = count_unclaimed(data, guild_id, league).await?;
 
     Ok(Some(DraftStatus {
         order,
@@ -391,6 +445,8 @@ async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, 
         session_status: session.status,
         roster_phase: season.roster_phase,
         remaining_teams,
+        picks_until_complete,
+        teams_per_player: per_player,
     }))
 }
 
