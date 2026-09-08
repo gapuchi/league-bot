@@ -3,6 +3,7 @@ pub mod soccer;
 pub mod commands;
 pub mod db;
 pub mod draft;
+pub mod game_poll;
 pub mod league;
 pub mod poller;
 pub mod registration;
