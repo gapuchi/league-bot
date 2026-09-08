@@ -1,6 +1,6 @@
 use league_bot::standings::{StandingRow, standings_ranks};
 
-fn standing_row(points: i64) -> StandingRow {
+fn standing_row(points: f64) -> StandingRow {
     StandingRow {
         user_id: 0,
         points,
@@ -13,24 +13,28 @@ fn standing_row(points: i64) -> StandingRow {
 #[test]
 fn standings_ranks_tied_points_share_rank() {
     let rows = vec![
-        standing_row(3),
-        standing_row(3),
-        standing_row(0),
-        standing_row(0),
-        standing_row(0),
-        standing_row(0),
+        standing_row(1.5),
+        standing_row(1.5),
+        standing_row(0.0),
+        standing_row(0.0),
+        standing_row(0.0),
+        standing_row(0.0),
     ];
 
     assert_eq!(standings_ranks(&rows), vec![1, 1, 3, 3, 3, 3]);
 }
 
 #[test]
-fn standings_footer_uses_league_labels() {
+fn standings_footer_uses_league_scoring_and_labels() {
+    use league_bot::scoring::{NFL, SOCCER};
     use league_bot::standings::standings_footer;
 
     assert_eq!(
-        standings_footer("draw", Some("goals")),
+        standings_footer(SOCCER, "draw", Some("goals")),
         "Win 3 · Draw 1 · Loss 0 · TB = tie-breaker goals"
     );
-    assert_eq!(standings_footer("tie", None), "Win 3 · Tie 1 · Loss 0");
+    assert_eq!(
+        standings_footer(NFL, "tie", None),
+        "Win 1 · Tie 0.5 · Loss 0"
+    );
 }

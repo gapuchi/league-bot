@@ -50,9 +50,9 @@ fn nfl_standings_use_game_results_without_a_tiebreaker() {
 
     let rows = League::Nfl.standings(&conn, season.id).unwrap();
     assert_eq!(rows.len(), 3);
-    assert_eq!((rows[0].user_id, rows[0].points), (100, 3));
-    assert_eq!((rows[1].user_id, rows[1].points), (200, 1));
-    assert_eq!((rows[2].user_id, rows[2].points), (300, 1));
+    assert_eq!((rows[0].user_id, rows[0].points), (100, 1.0));
+    assert_eq!((rows[1].user_id, rows[1].points), (200, 0.5));
+    assert_eq!((rows[2].user_id, rows[2].points), (300, 0.5));
     assert!(
         rows.iter()
             .all(|row| row.tiebreaker_value == 0 && row.tiebreaker_player.is_none())

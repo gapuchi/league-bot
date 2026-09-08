@@ -88,7 +88,7 @@ The background poller fetches finished matches and scorer totals from football-d
 
 Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Eagles`, `PHI`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
 
-**Scoring** — same points per game as the soccer leagues: win 3, tie 1, loss 0. Regular-season and playoff games count; preseason and the Pro Bowl do not.
+**Scoring** — win 1, tie 0.5, loss 0 per game. Regular-season and playoff games count; preseason and the Pro Bowl do not.
 
 **Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NFL seasons.
 

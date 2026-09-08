@@ -29,7 +29,7 @@ fn epl_standings_use_match_results() {
     let rows = League::Epl.standings(&conn, season.id).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].user_id, 100);
-    assert_eq!(rows[0].points, 3);
+    assert_eq!(rows[0].points, 3.0);
     assert_eq!(rows[1].user_id, 200);
-    assert_eq!(rows[1].points, 0);
+    assert_eq!(rows[1].points, 0.0);
 }

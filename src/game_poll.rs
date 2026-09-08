@@ -8,7 +8,7 @@ use serenity::Mentionable;
 use crate::{
     db::{Registration, SeasonMeta},
     league::League,
-    scoring::{self, DRAW_POINTS, FinishedMatch, LOSS_POINTS, WIN_POINTS},
+    scoring::{self, FinishedMatch},
     types::Data,
 };
 
@@ -49,8 +49,8 @@ impl GameReport {
 struct GameUpdate {
     user_id: u64,
     team_name: String,
-    points_earned: i64,
-    total_points: i64,
+    points_earned: f64,
+    total_points: f64,
 }
 
 pub fn unix_timestamp_secs() -> u64 {
@@ -109,7 +109,11 @@ fn game_updates(
         .map(|registration| {
             let registration = registration?;
             Ok(GameUpdate {
-                points_earned: scoring::points_for_team_in_match(registration.team_id, finished),
+                points_earned: scoring::points_for_team_in_match(
+                    league.scoring(),
+                    registration.team_id,
+                    finished,
+                ),
                 total_points: league.user_points(conn, season_id, registration.user_id)?,
                 user_id: registration.user_id,
                 team_name: registration.team_name,
@@ -177,10 +181,17 @@ pub async fn process_game(
         .collect();
 
     let draw_label = league.draw_label();
+    let rules = league.scoring();
     let description = format!(
         "{correction_line}**{}** {}–{} **{}**\n\n\
-         {update_lines}\nScoring: win {WIN_POINTS}, {draw_label} {DRAW_POINTS}, loss {LOSS_POINTS}",
-        report.home_name, report.home_score, report.away_score, report.away_name
+         {update_lines}\nScoring: win {}, {draw_label} {}, loss {}",
+        report.home_name,
+        report.home_score,
+        report.away_score,
+        report.away_name,
+        rules.win,
+        rules.draw,
+        rules.loss
     );
 
     let (title_suffix, colour) = if is_correction {
