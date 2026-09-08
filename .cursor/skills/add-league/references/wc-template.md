@@ -21,11 +21,12 @@ Use while implementing a new league. Copy structure, not tournament rules.
 |------|------|
 | `src/wc/mod.rs` | Module tree (`poll`, `remaining`) |
 | `src/wc/poll.rs` | WC elimination announces; delegates match ingest to `soccer_poll` |
-| `src/soccer_poll.rs` | Shared soccer match ingest + full-time announce + scorer cache |
+| `src/game_poll.rs` | Sport-agnostic ingest: `GameReport` → persist via `League`, score, announce, tie-breaker cache |
+| `src/soccer_poll.rs` | football-data.org `Match` → `GameReport`; scorer cache |
 | `src/wc/remaining.rs` | Tournament remaining (WC-specific) |
 | `src/league.rs` | Standings + pick-player dispatch (shared soccer logic) |
-| `src/tiebreaker.rs` | Shared soccer pick-player flow |
-| `src/db/soccer_macros.rs` | Macros for parallel soccer table accessors |
+| `src/tiebreaker.rs` | Shared pick-player flow (`RosterPlayer`, `claimed_teams`, `resolve_pick`) |
+| `src/db/league_macros.rs` | Macros for same-shape league table accessors |
 | `src/soccer.rs` | Soccer helpers (WC API interpretation) |
 | `src/api/football_data.rs` | HTTP + DTOs |
 
@@ -45,9 +46,18 @@ Use while implementing a new league. Copy structure, not tournament rules.
 | `commands/standings.rs` | Shared surface, dispatches via `League` |
 | `commands/wc/remaining.rs` | WC-only + focus guard |
 
-## NFL/NBA schema stubs
+## Non-soccer reference: NFL
+
+| File | Role |
+|------|------|
+| `src/api/espn.rs` | `EspnNflApi` (teams, scoreboard date range, roster, touchdown leaders) |
+| `src/nfl/season.rs` | Season-year rollover, `GameReport` from `NflGame`, preseason/Pro Bowl filter |
+| `src/nfl/teams.rs`, `src/nfl/tiebreaker.rs` | `CatalogTeam` list; rosters as `RosterPlayer` |
+| `src/nfl/poll.rs` | Fetch season games → `game_poll::process_game`; cache touchdown totals |
+| `src/db/nfl/` | `NflMatchResult`, `NflProcessedGame`, `NflPlayerTouchdownTotal`, `NflTiebreakerPick` |
+
+## NBA schema stubs
 
 Already in `CREATE_SCHEMA` (no Rust accessors yet):
 
-- `nfl_match_results`, `nfl_processed_games`, `nfl_tiebreaker_picks`, `nfl_player_touchdown_totals`
 - `nba_match_results`, `nba_processed_games`, `nba_tiebreaker_picks`, `nba_player_points_totals`
