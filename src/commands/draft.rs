@@ -1,11 +1,9 @@
-use poise::serenity_prelude as serenity;
-
 use crate::{
     draft, registration,
     types::{Context, Error},
 };
 
-use super::helpers::guild_id;
+use super::helpers::{guild_id, parse_user_ids};
 
 /// Team selection and pre-season draft commands
 #[poise::command(
@@ -35,12 +33,18 @@ pub async fn draft(_ctx: Context<'_>) -> Result<(), Error> {
 )]
 pub async fn draft_start(
     ctx: Context<'_>,
-    #[description = "Players in the draft (order will be randomized)"]
-    users: Vec<serenity::User>,
+    #[description = "Mention every player, e.g. @alice @bob @carol (order will be randomized)"]
+    #[rest]
+    players: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
-    let user_ids: Vec<u64> = users.iter().map(|u| u.id.get()).collect();
+    let user_ids = parse_user_ids(&players);
+    if user_ids.is_empty() {
+        ctx.say("Mention the players to include, e.g. `/draft start players: @alice @bob @carol`.")
+            .await?;
+        return Ok(());
+    }
     let message = draft::start_for_guild(ctx.data(), guild_id, user_ids).await?;
     ctx.say(message).await?;
     Ok(())
