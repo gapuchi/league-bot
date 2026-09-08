@@ -1,5 +1,20 @@
 use crate::db::DraftOrderKind;
 
+/// Full rounds only: largest pick count where every player gets the same number of teams.
+pub fn max_draft_picks(team_count: usize, player_count: usize) -> usize {
+    if player_count == 0 {
+        return 0;
+    }
+    (team_count / player_count) * player_count
+}
+
+pub fn teams_per_player(team_count: usize, player_count: usize) -> usize {
+    if player_count == 0 {
+        return 0;
+    }
+    team_count / player_count
+}
+
 /// Whose turn it is for `pick_index` (0-based number of picks already made).
 ///
 /// `order` is the randomized first-round sequence (position 0 picks first in round 0).
@@ -60,5 +75,18 @@ mod tests {
     #[test]
     fn empty_order_returns_none() {
         assert_eq!(next_picker(&[], 0, DraftOrderKind::Snake), None);
+    }
+
+    #[test]
+    fn max_draft_picks_stops_at_full_rounds() {
+        use super::{max_draft_picks, teams_per_player};
+
+        assert_eq!(max_draft_picks(48, 5), 45);
+        assert_eq!(teams_per_player(48, 5), 9);
+        assert_eq!(max_draft_picks(32, 3), 30);
+        assert_eq!(teams_per_player(32, 3), 10);
+        assert_eq!(max_draft_picks(12, 4), 12);
+        assert_eq!(max_draft_picks(10, 4), 8);
+        assert_eq!(max_draft_picks(3, 5), 0);
     }
 }

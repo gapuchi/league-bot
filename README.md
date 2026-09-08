@@ -48,7 +48,7 @@ Teams are selected through `/draft pick`, with or without a snake draft:
 1. Season roster phase starts as `open`; members may freely use `/draft pick`.
 2. `/draft start` mentioning every player (`@alice @bob @carol`) — order is **randomized**; phase becomes `drafting`.
 3. During the draft, `/draft pick` is restricted to the player on the clock; admins may `/assign` **only** for that player. `/unclaim` is blocked. The last picker may `/draft unpick` to undo their pick until the next person picks.
-4. When every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also run `/draft end` to freeze the roster early without drafting every team.
+4. The draft runs for full rounds only — each player gets the same number of teams (the pool size rounded down to a multiple of the player count). When that pick limit is reached, or when every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also run `/draft end` to freeze the roster early.
 
 Use `/draft status` anytime for order, whose turn, and remaining teams.
 
