@@ -5,7 +5,7 @@ fn standing_row(points: i64) -> StandingRow {
         user_id: 0,
         points,
         teams: vec![],
-        tiebreaker_goals: 0,
+        tiebreaker_value: 0,
         tiebreaker_player: None,
     }
 }
@@ -22,4 +22,18 @@ fn standings_ranks_tied_points_share_rank() {
     ];
 
     assert_eq!(standings_ranks(&rows), vec![1, 1, 3, 3, 3, 3]);
+}
+
+#[test]
+fn standings_footer_uses_league_labels() {
+    use league_bot::standings::standings_footer;
+
+    assert_eq!(
+        standings_footer("draw", "goals"),
+        "Win 3 · Draw 1 · Loss 0 · TB = tie-breaker goals"
+    );
+    assert_eq!(
+        standings_footer("tie", "touchdowns"),
+        "Win 3 · Tie 1 · Loss 0 · TB = tie-breaker touchdowns"
+    );
 }

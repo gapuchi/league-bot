@@ -5,7 +5,7 @@ use crate::{
 
 use super::helpers::guild_id;
 
-/// Designate a tie-breaker player from your claimed teams' squads
+/// Designate a tie-breaker player from your claimed teams' rosters
 #[poise::command(prefix_command, slash_command, guild_only, rename = "pick-player")]
 pub async fn pick_player(
     ctx: Context<'_>,

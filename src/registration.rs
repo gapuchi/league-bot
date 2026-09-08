@@ -171,13 +171,13 @@ pub async fn my_team_message(
     guild_id: u64,
     user_id: u64,
 ) -> Result<String, Error> {
-    let (registrations, pick, tiebreaker_value) = {
+    let (registrations, pick, tiebreaker_value, tiebreaker_unit) = {
         let conn = data.db.lock().await;
         let (season, league) = League::for_guild(&conn, guild_id)?;
         let registrations = Registration::list_for_user(&conn, season.id, user_id)?;
         let pick = league.tiebreaker_pick_for_user(&conn, season.id, user_id)?;
         let tiebreaker_value = league.tiebreaker_value_for_user(&conn, season.id, user_id)?;
-        (registrations, pick, tiebreaker_value)
+        (registrations, pick, tiebreaker_value, league.tiebreaker_unit())
     };
 
     let mut message = match registrations.as_slice() {
@@ -194,7 +194,7 @@ pub async fn my_team_message(
 
     if let Some((player_name, team_name)) = pick {
         message.push_str(&format!(
-            "\n\nTie-breaker: **{player_name}** ({team_name}) — **{tiebreaker_value}** goals"
+            "\n\nTie-breaker: **{player_name}** ({team_name}) — **{tiebreaker_value}** {tiebreaker_unit}"
         ));
     } else if !registrations.is_empty() {
         message.push_str("\n\nTie-breaker: none — use `/pick-player` to designate one.");

@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::api::{ApiError, FootballDataApi, Match, Team};
+use crate::{
+    api::{ApiError, FootballDataApi, Match, Team},
+    tiebreaker::RosterPlayer,
+};
 
 /// Returns full-time goals when the API has populated both sides.
 /// football-data.org often marks matches FINISHED before scores are available.
@@ -496,18 +499,10 @@ pub fn classify_teams(teams: &[Team], matches: &[Match]) -> TeamClassification {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SquadPlayerMatch {
-    pub player_id: i64,
-    pub player_name: String,
-    pub team_id: i64,
-    pub team_name: String,
-}
-
 pub async fn fetch_squads_for_teams(
     api: &FootballDataApi,
     teams: &[(i64, String)],
-) -> Result<Vec<SquadPlayerMatch>, ApiError> {
+) -> Result<Vec<RosterPlayer>, ApiError> {
     let mut players = Vec::new();
     for (team_id, team_name) in teams {
         let squad = api.fetch_team_squad(*team_id).await?;
@@ -516,7 +511,7 @@ pub async fn fetch_squads_for_teams(
                 .role
                 .as_ref()
                 .is_none_or(|role| role == "PLAYER");
-            is_player.then(|| SquadPlayerMatch {
+            is_player.then(|| RosterPlayer {
                 player_id: player.id,
                 player_name: player.name,
                 team_id: *team_id,
@@ -525,20 +520,6 @@ pub async fn fetch_squads_for_teams(
         }));
     }
     Ok(players)
-}
-
-pub fn find_players<'a>(
-    players: &'a [SquadPlayerMatch],
-    query: &str,
-) -> Vec<&'a SquadPlayerMatch> {
-    let query = query.trim().to_lowercase();
-    players
-        .iter()
-        .filter(|player| {
-            let name = player.player_name.to_lowercase();
-            name == query || name.contains(&query)
-        })
-        .collect()
 }
 
 #[cfg(test)]
