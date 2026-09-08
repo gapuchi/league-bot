@@ -4,8 +4,7 @@ use rusqlite::Connection;
 use crate::{
     db::{
         EplMatchResult, EplPlayerGoalTotal, EplProcessedMatch, EplTiebreakerPick, NflMatchResult,
-        NflPlayerTouchdownTotal, NflProcessedGame, NflTiebreakerPick, Registration, Season,
-        SeasonMeta, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
+        NflProcessedGame, Registration, Season, SeasonMeta, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
     },
     epl,
     game_poll::GameReport,
@@ -91,11 +90,12 @@ impl League {
         Self::from_slug(slug).is_some()
     }
 
-    /// Stat that breaks ties on the leaderboard, as shown to users.
-    pub fn tiebreaker_unit(self) -> &'static str {
+    /// Stat that breaks ties on the leaderboard, as shown to users. `None` when the
+    /// league has no tie-breaker (ties on points share a rank).
+    pub fn tiebreaker_unit(self) -> Option<&'static str> {
         match self {
-            Self::Wc | Self::Epl => "goals",
-            Self::Nfl => "touchdowns",
+            Self::Wc | Self::Epl => Some("goals"),
+            Self::Nfl => None,
         }
     }
 
@@ -222,18 +222,7 @@ impl League {
                 };
                 Ok((goals, pick.map(|p| p.player_name)))
             }
-            Self::Nfl => {
-                let pick = NflTiebreakerPick::get_for_user(conn, season_id, user_id)?;
-                let touchdowns = match &pick {
-                    Some(pick) => NflPlayerTouchdownTotal::touchdowns_for_player(
-                        conn,
-                        season_id,
-                        pick.player_id,
-                    )?,
-                    None => 0,
-                };
-                Ok((touchdowns, pick.map(|p| p.player_name)))
-            }
+            Self::Nfl => Ok((0, None)),
         }
     }
 
@@ -282,8 +271,7 @@ impl League {
                 .map(|pick| (pick.player_name, pick.team_name)),
             Self::Epl => EplTiebreakerPick::get_for_user(conn, season_id, user_id)?
                 .map(|pick| (pick.player_name, pick.team_name)),
-            Self::Nfl => NflTiebreakerPick::get_for_user(conn, season_id, user_id)?
-                .map(|pick| (pick.player_name, pick.team_name)),
+            Self::Nfl => None,
         })
     }
 
@@ -297,21 +285,29 @@ impl League {
         match self {
             Self::Wc => WcTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
             Self::Epl => EplTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
-            Self::Nfl => NflTiebreakerPick::delete_for_team(conn, season_id, user_id, team_id),
+            Self::Nfl => Ok(()),
         }
     }
 
+    fn no_tiebreaker_message(self) -> String {
+        format!(
+            "{} has no tie-breaker — members level on points share a rank.",
+            self.display_name()
+        )
+    }
+
+    /// Rosters of the given teams for `/pick-player`; `None` when the league has no tie-breaker.
     async fn rosters_for_teams(
         self,
         data: &Data,
         teams: &[(i64, String)],
-    ) -> Result<Vec<RosterPlayer>, Error> {
+    ) -> Result<Option<Vec<RosterPlayer>>, Error> {
         match self {
             Self::Wc | Self::Epl => {
                 let api = crate::api::FootballDataApi::from_env(data.http.clone());
-                Ok(crate::soccer::fetch_squads_for_teams(&api, teams).await?)
+                Ok(Some(crate::soccer::fetch_squads_for_teams(&api, teams).await?))
             }
-            Self::Nfl => nfl::tiebreaker::fetch_rosters(data, teams).await,
+            Self::Nfl => Ok(None),
         }
     }
 
@@ -322,11 +318,16 @@ impl League {
         user_id: u64,
         player: &str,
     ) -> Result<String, Error> {
+        if self.tiebreaker_unit().is_none() {
+            return Ok(self.no_tiebreaker_message());
+        }
         let teams = tiebreaker::claimed_teams(data, guild_id, user_id).await?;
         if teams.is_empty() {
             return Ok(tiebreaker::NO_TEAMS_MESSAGE.into());
         }
-        let players = self.rosters_for_teams(data, &teams).await?;
+        let Some(players) = self.rosters_for_teams(data, &teams).await? else {
+            return Ok(self.no_tiebreaker_message());
+        };
 
         tiebreaker::resolve_pick(data, guild_id, user_id, player, &players, |conn,
                                                                               season_id,
@@ -351,21 +352,13 @@ impl League {
                     selected.team_id,
                     &selected.team_name,
                 ),
-                Self::Nfl => NflTiebreakerPick::upsert(
-                    conn,
-                    season_id,
-                    user_id,
-                    selected.player_id,
-                    &selected.player_name,
-                    selected.team_id,
-                    &selected.team_name,
-                ),
+                Self::Nfl => Ok(()),
             }
         })
         .await
     }
 
-    /// Cache `(player_id, total)` tie-breaker stats (goals or touchdowns) for a season.
+    /// Cache `(player_id, total)` tie-breaker stats for a season; no-op for leagues without one.
     pub fn cache_tiebreaker_totals(
         self,
         conn: &Connection,
@@ -376,9 +369,7 @@ impl League {
         match self {
             Self::Wc => WcPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
             Self::Epl => EplPlayerGoalTotal::upsert_batch(conn, season_id, totals, updated_at),
-            Self::Nfl => {
-                NflPlayerTouchdownTotal::upsert_batch(conn, season_id, totals, updated_at)
-            }
+            Self::Nfl => Ok(()),
         }
     }
 
@@ -528,8 +519,8 @@ mod tests {
 
     #[test]
     fn user_facing_labels_follow_the_sport() {
-        assert_eq!(League::Wc.tiebreaker_unit(), "goals");
-        assert_eq!(League::Nfl.tiebreaker_unit(), "touchdowns");
+        assert_eq!(League::Wc.tiebreaker_unit(), Some("goals"));
+        assert_eq!(League::Nfl.tiebreaker_unit(), None);
         assert_eq!(League::Nfl.draw_label(), "tie");
         assert_eq!(League::Nfl.finished_label(), "final");
         assert_eq!(League::Epl.finished_label(), "full time");

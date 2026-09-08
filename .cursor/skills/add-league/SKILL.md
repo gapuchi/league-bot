@@ -55,7 +55,7 @@ For **football-data.org soccer**, shared teams/standings/tie-break/poll ingest l
 | `poll.rs` | Delegate match ingest to `soccer_poll`; league-only announce hooks (e.g. WC eliminations) |
 | optional | `remaining.rs`, other league-only use cases |
 
-For **non-soccer** leagues, follow **NFL** (`src/nfl/`, `src/api/espn.rs`, `src/db/nfl/`): API client in `api/`, a `season`/calendar module that maps provider games into `game_poll::GameReport`, `teams` → `CatalogTeam`, `tiebreaker` → `RosterPlayer`, and a `poll` that calls `game_poll::process_game`. Standings, scoring, announce, and the pick-player flow are already shared.
+For **non-soccer** leagues, follow **NFL** (`src/nfl/`, `src/api/espn.rs`, `src/db/nfl/`): API client in `api/`, a `season`/calendar module that maps provider games into `game_poll::GameReport`, `teams` → `CatalogTeam`, and a `poll` that calls `game_poll::process_game`. Standings, scoring, and announce are already shared. A league may opt out of tie-breakers (`tiebreaker_unit` → `None`, no-op tie-break arms) as NFL does; to opt in, supply rosters as `RosterPlayer` via `rosters_for_teams` and the pick-player flow is shared too.
 
 Export via `src/<slug>/mod.rs`. Register `pub mod <slug>;` in `src/lib.rs`.
 
@@ -67,7 +67,7 @@ Add variant and update **every** exhaustive match:
 
 - `ALL`
 - `from_slug` / `slug` / `display_name`
-- `tiebreaker_unit` / `draw_label` / `finished_label` (user-facing sport words)
+- `tiebreaker_unit` (`Option`; `None` = no tie-breaker) / `draw_label` / `finished_label` (user-facing sport words)
 - `list_teams`, `team_not_found_message`
 - `standings`, `user_points` (via `finished_matches`)
 - `tiebreaker_for_standings`, `tiebreaker_pick_for_user`, `clear_picks_for_team`, `rosters_for_teams`, `pick_tiebreaker_player` upsert arm (no-op / empty `Ok` if unused)

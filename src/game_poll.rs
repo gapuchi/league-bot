@@ -62,7 +62,7 @@ pub fn unix_timestamp_secs() -> u64 {
 }
 
 /// Cache `(player_id, total)` tie-breaker stats for every polled season, returning a log
-/// fragment such as `, 349 touchdown scorers cached for 2 season(s)`.
+/// fragment such as `, 120 goal scorers cached for 2 season(s)`.
 pub async fn cache_tiebreaker_totals(
     data: &Data,
     league: League,

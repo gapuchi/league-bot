@@ -6,9 +6,7 @@ use serde::{Deserialize, Deserializer};
 use super::{ApiError, check_response};
 
 const SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
-const CORE_BASE_URL: &str = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl";
-const TOUCHDOWN_CATEGORY: &str = "totalTouchdowns";
-/// Large enough to return a whole season of games or every touchdown scorer in one page.
+/// Large enough to return a whole season of games in one page.
 const PAGE_LIMIT: u32 = 1000;
 /// ESPN's edge returns 403 to unidentified clients; a crawler-style `name/version (+url)`
 /// agent is accepted. Keep the repository URL — bare product tokens are still refused.
@@ -83,21 +81,6 @@ pub struct NflGame {
     pub competitors: Vec<NflCompetitor>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NflRosterPlayer {
-    #[serde(deserialize_with = "string_i64")]
-    pub id: i64,
-    pub full_name: String,
-    pub position: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NflTouchdownLeader {
-    pub player_id: i64,
-    pub touchdowns: i64,
-}
-
 #[derive(Deserialize)]
 struct TeamsResponse {
     sports: Vec<TeamsSport>,
@@ -164,64 +147,6 @@ struct StatusType {
     completed: bool,
 }
 
-#[derive(Deserialize)]
-struct RosterResponse {
-    #[serde(default)]
-    athletes: Vec<RosterGroup>,
-}
-
-#[derive(Deserialize)]
-struct RosterGroup {
-    #[serde(default)]
-    items: Vec<RosterItem>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RosterItem {
-    #[serde(deserialize_with = "string_i64")]
-    id: i64,
-    full_name: String,
-    position: Option<RosterPosition>,
-}
-
-#[derive(Deserialize)]
-struct RosterPosition {
-    abbreviation: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct LeadersResponse {
-    #[serde(default)]
-    categories: Vec<LeaderCategory>,
-}
-
-#[derive(Deserialize)]
-struct LeaderCategory {
-    name: String,
-    #[serde(default)]
-    leaders: Vec<LeaderEntry>,
-}
-
-#[derive(Deserialize)]
-struct LeaderEntry {
-    value: f64,
-    athlete: RefLink,
-}
-
-#[derive(Deserialize)]
-struct RefLink {
-    #[serde(rename = "$ref")]
-    href: String,
-}
-
-/// Extracts `{id}` from `.../athletes/{id}?lang=en`.
-fn athlete_id_from_ref(href: &str) -> Option<i64> {
-    let (_, tail) = href.rsplit_once("/athletes/")?;
-    let id = tail.split(['?', '/']).next()?;
-    id.parse().ok()
-}
-
 #[derive(Clone)]
 pub struct EspnNflApi {
     client: reqwest::Client,
@@ -285,65 +210,11 @@ impl EspnNflApi {
             })
             .collect())
     }
-
-    pub async fn fetch_team_roster(&self, team_id: i64) -> Result<Vec<NflRosterPlayer>, ApiError> {
-        let response = self
-            .get(format!("{SITE_BASE_URL}/teams/{team_id}/roster"))
-            .await?;
-        let body: RosterResponse = response.json().await.map_err(ApiError::Request)?;
-        Ok(body
-            .athletes
-            .into_iter()
-            .flat_map(|group| group.items)
-            .map(|item| NflRosterPlayer {
-                id: item.id,
-                full_name: item.full_name,
-                position: item.position.and_then(|position| position.abbreviation),
-            })
-            .collect())
-    }
-
-    /// Season-long total touchdowns scored per player (rushing, receiving, returns).
-    pub async fn fetch_touchdown_leaders(
-        &self,
-        season_year: i64,
-        season_type: i64,
-    ) -> Result<Vec<NflTouchdownLeader>, ApiError> {
-        let response = self
-            .get(format!(
-                "{CORE_BASE_URL}/seasons/{season_year}/types/{season_type}/leaders?limit={PAGE_LIMIT}"
-            ))
-            .await?;
-        let body: LeadersResponse = response.json().await.map_err(ApiError::Request)?;
-        Ok(body
-            .categories
-            .into_iter()
-            .filter(|category| category.name == TOUCHDOWN_CATEGORY)
-            .flat_map(|category| category.leaders)
-            .filter_map(|entry| {
-                Some(NflTouchdownLeader {
-                    player_id: athlete_id_from_ref(&entry.athlete.href)?,
-                    touchdowns: entry.value.round() as i64,
-                })
-            })
-            .collect())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn athlete_id_parses_core_ref() {
-        assert_eq!(
-            athlete_id_from_ref(
-                "http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/athletes/12483?lang=en&region=us"
-            ),
-            Some(12483)
-        );
-        assert_eq!(athlete_id_from_ref("http://example.com/teams/1"), None);
-    }
 
     #[test]
     fn competitor_score_accepts_string_or_missing() {

@@ -10,7 +10,7 @@ alwaysApply: false
 
 **Belongs in `api/`:**
 - Client methods that map 1:1 to endpoints (`FootballDataApi`, `EspnNflApi`)
-- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`; `NflTeam`, `NflGame`, `NflRosterPlayer`, `NflTouchdownLeader`) and the string→id / `$ref` plumbing ESPN needs
+- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`; `NflTeam`, `NflGame`) and the string→id plumbing ESPN needs
 - Shared client construction (`FootballDataApi::from_env`, `EspnNflApi::new` with its required `User-Agent`)
 
 **Belongs in domain modules (not `api/`):**

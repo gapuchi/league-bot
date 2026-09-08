@@ -7,17 +7,20 @@ pub struct StandingRow {
     pub user_id: u64,
     pub points: i64,
     pub teams: Vec<(String, i64)>,
-    /// Tie-breaker stat total (goals, touchdowns, …) — see `League::tiebreaker_unit`.
+    /// Tie-breaker stat total (e.g. goals) — see `League::tiebreaker_unit`; 0 when the
+    /// league has none.
     pub tiebreaker_value: i64,
     pub tiebreaker_player: Option<String>,
 }
 
 /// `draw_label` / `tiebreaker_unit` come from the focused `League` (e.g. `draw`/`goals`).
-pub fn standings_footer(draw_label: &str, tiebreaker_unit: &str) -> String {
+pub fn standings_footer(draw_label: &str, tiebreaker_unit: Option<&str>) -> String {
     let draw = capitalize_first(draw_label);
-    format!(
-        "Win {WIN_POINTS} · {draw} {DRAW_POINTS} · Loss {LOSS_POINTS} · TB = tie-breaker {tiebreaker_unit}"
-    )
+    let mut footer = format!("Win {WIN_POINTS} · {draw} {DRAW_POINTS} · Loss {LOSS_POINTS}");
+    if let Some(unit) = tiebreaker_unit {
+        footer.push_str(&format!(" · TB = tie-breaker {unit}"));
+    }
+    footer
 }
 
 fn capitalize_first(word: &str) -> String {
@@ -95,19 +98,21 @@ pub fn format_standing_summary(rank: usize, row: &StandingRow) -> String {
     )
 }
 
-pub fn format_standing_detail(rank: usize, row: &StandingRow, tiebreaker_unit: &str) -> String {
+pub fn format_standing_detail(
+    rank: usize,
+    row: &StandingRow,
+    tiebreaker_unit: Option<&str>,
+) -> String {
     let team_lines = row.teams.iter().map(|(team_name, points)| {
         format!("\n   • **{team_name}** — {points} pts")
     });
-    let tb_line = match &row.tiebreaker_player {
-        Some(player) => format!(
-            "\n   • Tie-breaker: **{player}** — {} {tiebreaker_unit}",
+    let tb_line = match (tiebreaker_unit, &row.tiebreaker_player) {
+        (None, _) => String::new(),
+        (Some(unit), Some(player)) => format!(
+            "\n   • Tie-breaker: **{player}** — {} {unit}",
             row.tiebreaker_value
         ),
-        None => format!(
-            "\n   • Tie-breaker — {} {tiebreaker_unit}",
-            row.tiebreaker_value
-        ),
+        (Some(unit), None) => format!("\n   • Tie-breaker — {} {unit}", row.tiebreaker_value),
     };
     format_standing_summary(rank, row)
         + &team_lines.collect::<String>()
@@ -124,7 +129,7 @@ pub fn format_standings_summary_lines(rows: &[StandingRow], ranks: &[usize]) -> 
 pub fn format_standings_detail_lines(
     rows: &[StandingRow],
     ranks: &[usize],
-    tiebreaker_unit: &str,
+    tiebreaker_unit: Option<&str>,
 ) -> Vec<String> {
     rows.iter()
         .zip(ranks)
