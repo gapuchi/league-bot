@@ -38,7 +38,6 @@ pub async fn poll(
 
     Ok(PollOutcome {
         finished_matches: reports.len(),
-        scored_matches: reports.len(),
         seasons: seasons.len(),
         detail: format!("NFL {season_year} poll"),
     })

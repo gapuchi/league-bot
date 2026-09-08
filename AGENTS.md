@@ -76,7 +76,7 @@ When adding behavior: does every league get this? Yes → `game_poll` / `standin
 
 ## NFL (ESPN)
 
-`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `poll`. NFL has **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none (the `nfl_tiebreaker_picks` / `nfl_player_touchdown_totals` tables stay unused). `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
+`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `poll`. NFL has **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none. `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
 
 Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
 

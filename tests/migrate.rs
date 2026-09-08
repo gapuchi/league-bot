@@ -11,7 +11,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 
     let leagues: i64 = conn
         .query_row("SELECT COUNT(*) FROM leagues", [], |row| row.get(0))
@@ -35,14 +35,8 @@ fn fresh_init_seeds_catalog_without_seasons() {
             FROM sqlite_master
             WHERE type = 'table'
               AND name IN (
-                'nba_match_results',
-                'nba_processed_games',
-                'nba_tiebreaker_picks',
-                'nba_player_points_totals',
                 'nfl_match_results',
                 'nfl_processed_games',
-                'nfl_tiebreaker_picks',
-                'nfl_player_touchdown_totals',
                 'epl_match_results',
                 'epl_processed_matches',
                 'epl_tiebreaker_picks',
@@ -56,7 +50,21 @@ fn fresh_init_seeds_catalog_without_seasons() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(league_tables, 15);
+    assert_eq!(league_tables, 9);
+
+    let dropped_tables: i64 = conn
+        .query_row(
+            "
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND (name LIKE 'nba_%' OR name = 'teams' OR name = 'nfl_tiebreaker_picks')
+            ",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(dropped_tables, 0);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const WC_LEAGUE_SLUG: &str = "wc";
 pub const NBA_LEAGUE_SLUG: &str = "nba";
 pub const NFL_LEAGUE_SLUG: &str = "nfl";
@@ -27,8 +27,6 @@ CREATE TABLE IF NOT EXISTS seasons (
     announce_channel_id     INTEGER,
     polling_enabled         INTEGER NOT NULL DEFAULT 1,
     roster_phase            TEXT NOT NULL DEFAULT 'open',
-    starts_at               TEXT,
-    ends_at                 TEXT,
     UNIQUE (guild_id, league_id, slug)
 );
 
@@ -52,16 +50,6 @@ CREATE TABLE IF NOT EXISTS guild_config (
     default_season_id       INTEGER NOT NULL REFERENCES seasons(id)
 );
 
-CREATE TABLE IF NOT EXISTS teams (
-    league_id               INTEGER NOT NULL,
-    team_id                 INTEGER NOT NULL,
-    name                    TEXT NOT NULL,
-    short_name              TEXT,
-    code                    TEXT,
-    PRIMARY KEY (league_id, team_id),
-    FOREIGN KEY (league_id) REFERENCES leagues(id)
-);
-
 CREATE TABLE IF NOT EXISTS registrations (
     season_id               INTEGER NOT NULL REFERENCES seasons(id),
     user_id                 INTEGER NOT NULL,
@@ -81,7 +69,6 @@ CREATE TABLE IF NOT EXISTS wc_match_results (
     home_goals              INTEGER NOT NULL,
     away_goals              INTEGER NOT NULL,
     stage                   TEXT,
-    finished_at             TEXT,
     PRIMARY KEY (season_id, match_id)
 );
 
@@ -115,41 +102,6 @@ CREATE TABLE IF NOT EXISTS wc_player_goal_totals (
     PRIMARY KEY (season_id, player_id)
 );
 
-CREATE TABLE IF NOT EXISTS nba_match_results (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    game_id                 INTEGER NOT NULL,
-    home_team_id            INTEGER NOT NULL,
-    away_team_id            INTEGER NOT NULL,
-    home_points             INTEGER NOT NULL,
-    away_points             INTEGER NOT NULL,
-    finished_at             TEXT,
-    PRIMARY KEY (season_id, game_id)
-);
-
-CREATE TABLE IF NOT EXISTS nba_processed_games (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    game_id                 INTEGER NOT NULL,
-    PRIMARY KEY (season_id, game_id)
-);
-
-CREATE TABLE IF NOT EXISTS nba_tiebreaker_picks (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    user_id                 INTEGER NOT NULL,
-    player_id               INTEGER NOT NULL,
-    player_name             TEXT NOT NULL,
-    team_id                 INTEGER NOT NULL,
-    team_name               TEXT NOT NULL,
-    PRIMARY KEY (season_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS nba_player_points_totals (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    player_id               INTEGER NOT NULL,
-    points                  INTEGER NOT NULL,
-    updated_at              TEXT NOT NULL,
-    PRIMARY KEY (season_id, player_id)
-);
-
 CREATE TABLE IF NOT EXISTS nfl_match_results (
     season_id               INTEGER NOT NULL REFERENCES seasons(id),
     game_id                 INTEGER NOT NULL,
@@ -157,7 +109,6 @@ CREATE TABLE IF NOT EXISTS nfl_match_results (
     away_team_id            INTEGER NOT NULL,
     home_score              INTEGER NOT NULL,
     away_score              INTEGER NOT NULL,
-    finished_at             TEXT,
     PRIMARY KEY (season_id, game_id)
 );
 
@@ -165,24 +116,6 @@ CREATE TABLE IF NOT EXISTS nfl_processed_games (
     season_id               INTEGER NOT NULL REFERENCES seasons(id),
     game_id                 INTEGER NOT NULL,
     PRIMARY KEY (season_id, game_id)
-);
-
-CREATE TABLE IF NOT EXISTS nfl_tiebreaker_picks (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    user_id                 INTEGER NOT NULL,
-    player_id               INTEGER NOT NULL,
-    player_name             TEXT NOT NULL,
-    team_id                 INTEGER NOT NULL,
-    team_name               TEXT NOT NULL,
-    PRIMARY KEY (season_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS nfl_player_touchdown_totals (
-    season_id               INTEGER NOT NULL REFERENCES seasons(id),
-    player_id               INTEGER NOT NULL,
-    touchdowns              INTEGER NOT NULL,
-    updated_at              TEXT NOT NULL,
-    PRIMARY KEY (season_id, player_id)
 );
 
 CREATE TABLE IF NOT EXISTS epl_match_results (
@@ -193,7 +126,6 @@ CREATE TABLE IF NOT EXISTS epl_match_results (
     home_goals              INTEGER NOT NULL,
     away_goals              INTEGER NOT NULL,
     matchday                INTEGER,
-    finished_at             TEXT,
     PRIMARY KEY (season_id, match_id)
 );
 

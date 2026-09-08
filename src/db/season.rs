@@ -251,14 +251,6 @@ impl Season {
         rows.collect()
     }
 
-    pub fn league_id_for(conn: &Connection, season_id: i64) -> rusqlite::Result<i64> {
-        conn.query_row(
-            "SELECT league_id FROM seasons WHERE id = ?1",
-            params![season_id],
-            |row| row.get(0),
-        )
-    }
-
     pub fn league_slug_for(conn: &Connection, season_id: i64) -> rusqlite::Result<String> {
         conn.query_row(
             "

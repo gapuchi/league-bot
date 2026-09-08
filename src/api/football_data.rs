@@ -21,8 +21,6 @@ pub struct Team {
 pub struct MatchTeam {
     pub id: Option<i64>,
     pub name: Option<String>,
-    pub short_name: Option<String>,
-    pub tla: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

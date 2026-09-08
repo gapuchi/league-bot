@@ -9,14 +9,10 @@ fn sample_match(home: Option<i64>, away: Option<i64>) -> Match {
         home_team: MatchTeam {
             id: Some(769),
             name: Some("Mexico".into()),
-            short_name: None,
-            tla: None,
         },
         away_team: MatchTeam {
             id: Some(774),
             name: Some("South Africa".into()),
-            short_name: None,
-            tla: None,
         },
         score: Score {
             full_time: ScoreDetail { home, away },
