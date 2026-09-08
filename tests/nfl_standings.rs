@@ -22,7 +22,6 @@ fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
         away_team_id: 6,
         home_score: 24,
         away_score: 20,
-        week: Some(1),
     }
     .upsert(&conn)
     .unwrap();
@@ -34,7 +33,6 @@ fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
         away_team_id: 6,
         home_score: 17,
         away_score: 17,
-        week: Some(2),
     }
     .upsert(&conn)
     .unwrap();

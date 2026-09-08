@@ -25,7 +25,7 @@ pub struct GameReport {
     pub away_score: i64,
     /// Competition stage as the provider names it (soccer group/knockout); persisted by WC.
     pub stage: Option<String>,
-    /// Matchday (soccer) or week (NFL); persisted by EPL and NFL.
+    /// Matchday (soccer) or week (NFL); persisted by EPL, title-only for NFL.
     pub round: Option<i64>,
     /// Announcement title prefix, e.g. `Matchday 3` or `Week 5`.
     pub title: String,
