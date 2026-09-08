@@ -46,7 +46,7 @@ Use `/season status` to see which league and season commands currently target in
 Teams are selected through `/draft pick`, with or without a snake draft:
 
 1. Season roster phase starts as `open`; members may freely use `/draft pick`.
-2. `/draft start` with the list of players — order is **randomized**; phase becomes `drafting`.
+2. `/draft start` mentioning every player (`@alice @bob @carol`) — order is **randomized**; phase becomes `drafting`.
 3. During the draft, `/draft pick` is restricted to the player on the clock; admins may `/assign` **only** for that player. `/unclaim` is blocked. The last picker may `/draft unpick` to undo their pick until the next person picks.
 4. When every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also run `/draft end` to freeze the roster early without drafting every team.
 
