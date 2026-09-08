@@ -50,11 +50,11 @@ Use while implementing a new league. Copy structure, not tournament rules.
 
 | File | Role |
 |------|------|
-| `src/api/espn.rs` | `EspnNflApi` (teams, scoreboard date range, roster, touchdown leaders) |
+| `src/api/espn.rs` | `EspnNflApi` (teams, scoreboard date range) |
 | `src/nfl/season.rs` | Season-year rollover, `GameReport` from `NflGame`, preseason/Pro Bowl filter |
-| `src/nfl/teams.rs`, `src/nfl/tiebreaker.rs` | `CatalogTeam` list; rosters as `RosterPlayer` |
-| `src/nfl/poll.rs` | Fetch season games → `game_poll::process_game`; cache touchdown totals |
-| `src/db/nfl/` | `NflMatchResult`, `NflProcessedGame`, `NflPlayerTouchdownTotal`, `NflTiebreakerPick` |
+| `src/nfl/teams.rs` | `CatalogTeam` list |
+| `src/nfl/poll.rs` | Fetch season games → `game_poll::process_game` |
+| `src/db/nfl/` | `NflMatchResult`, `NflProcessedGame` (no tie-breaker: `tiebreaker_unit` is `None`) |
 
 ## NBA schema stubs
 

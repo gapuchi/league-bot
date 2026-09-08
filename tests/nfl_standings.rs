@@ -1,12 +1,16 @@
+use std::sync::Arc;
+
 use rusqlite::Connection;
+use tokio::sync::Mutex;
 
 use league_bot::{
-    db::{self, NflMatchResult, NflPlayerTouchdownTotal, NflTiebreakerPick, Registration, Season},
+    db::{self, GuildConfig, NflMatchResult, Registration, Season},
     league::League,
+    standings::{format_standing_detail, standings_ranks},
+    types::Data,
 };
 
-#[test]
-fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
+fn seeded_conn() -> (Connection, Season) {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();
 
@@ -25,7 +29,7 @@ fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
     }
     .upsert(&conn)
     .unwrap();
-    // Tie between Chiefs and Cowboys: both pick up the draw points.
+    // A tie: both sides collect the draw points.
     NflMatchResult {
         season_id: season.id,
         game_id: 402,
@@ -37,27 +41,27 @@ fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
     .upsert(&conn)
     .unwrap();
 
-    NflTiebreakerPick::upsert(
-        &conn,
-        season.id,
-        200,
-        9001,
-        "CeeDee Lamb",
-        6,
-        "Dallas Cowboys",
-    )
-    .unwrap();
-    NflPlayerTouchdownTotal::upsert_batch(&conn, season.id, &[(9001, 7)], "0").unwrap();
+    (conn, season)
+}
+
+#[test]
+fn nfl_standings_use_game_results_without_a_tiebreaker() {
+    let (conn, season) = seeded_conn();
 
     let rows = League::Nfl.standings(&conn, season.id).unwrap();
     assert_eq!(rows.len(), 3);
     assert_eq!((rows[0].user_id, rows[0].points), (100, 3));
-    // Cowboys and Chiefs are level on points; the touchdown tie-breaker ranks Cowboys first.
     assert_eq!((rows[1].user_id, rows[1].points), (200, 1));
-    assert_eq!(rows[1].tiebreaker_value, 7);
-    assert_eq!(rows[1].tiebreaker_player.as_deref(), Some("CeeDee Lamb"));
     assert_eq!((rows[2].user_id, rows[2].points), (300, 1));
-    assert_eq!(rows[2].tiebreaker_value, 0);
+    assert!(
+        rows.iter()
+            .all(|row| row.tiebreaker_value == 0 && row.tiebreaker_player.is_none())
+    );
+
+    // Level on points → shared rank, and no tie-breaker line in the breakdown.
+    assert_eq!(standings_ranks(&rows), vec![1, 2, 2]);
+    let detail = format_standing_detail(2, &rows[1], League::Nfl.tiebreaker_unit());
+    assert!(!detail.contains("Tie-breaker"), "{detail}");
 
     assert_eq!(
         NflMatchResult::score(&conn, season.id, 401).unwrap(),
@@ -67,16 +71,25 @@ fn nfl_standings_use_game_results_and_touchdown_tiebreaker() {
         League::Nfl
             .tiebreaker_pick_for_user(&conn, season.id, 200)
             .unwrap(),
-        Some(("CeeDee Lamb".into(), "Dallas Cowboys".into()))
+        None
     );
-
     League::Nfl
         .clear_picks_for_team(&conn, season.id, 200, 6)
         .unwrap();
-    assert_eq!(
-        League::Nfl
-            .tiebreaker_pick_for_user(&conn, season.id, 200)
-            .unwrap(),
-        None
-    );
+}
+
+#[tokio::test]
+async fn nfl_pick_player_is_declined_without_network() {
+    let (conn, season) = seeded_conn();
+    GuildConfig::set_default_season_id(&conn, 111, season.id).unwrap();
+    let data = Data {
+        db: Arc::new(Mutex::new(conn)),
+        http: reqwest::Client::new(),
+    };
+
+    let message = League::Nfl
+        .pick_tiebreaker_player(&data, 111, 200, "Lamb")
+        .await
+        .unwrap();
+    assert!(message.contains("no tie-breaker"), "{message}");
 }

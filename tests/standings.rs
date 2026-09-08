@@ -29,11 +29,8 @@ fn standings_footer_uses_league_labels() {
     use league_bot::standings::standings_footer;
 
     assert_eq!(
-        standings_footer("draw", "goals"),
+        standings_footer("draw", Some("goals")),
         "Win 3 · Draw 1 · Loss 0 · TB = tie-breaker goals"
     );
-    assert_eq!(
-        standings_footer("tie", "touchdowns"),
-        "Win 3 · Tie 1 · Loss 0 · TB = tie-breaker touchdowns"
-    );
+    assert_eq!(standings_footer("tie", None), "Win 3 · Tie 1 · Loss 0");
 }

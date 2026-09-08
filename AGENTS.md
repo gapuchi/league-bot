@@ -23,7 +23,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | `src/soccer.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
 | `src/db/` | Persistence accessors; shared entities at root; league tables under `db/<slug>/` |
 | `src/league.rs` | Compile-time `League` enum — host dispatch face into league modules |
-| League modules (`src/wc/`, `src/epl/`, `src/nfl/`) | League-only variation (WC eliminations; NFL calendar, teams, rosters, poll); not shared soccer logic |
+| League modules (`src/wc/`, `src/epl/`, `src/nfl/`) | League-only variation (WC eliminations; NFL calendar, teams, poll); not shared soccer logic |
 | Host use cases (`registration.rs`, `standings.rs` formatters, `game_poll.rs`, `tiebreaker.rs`, `poller.rs`) | Shared sport-agnostic orchestration via `League` |
 | `src/commands/` | Thin Discord adapters only |
 
@@ -76,7 +76,7 @@ When adding behavior: does every league get this? Yes → `game_poll` / `standin
 
 ## NFL (ESPN)
 
-`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `tiebreaker` (rosters), `poll`. Tie-breaker stat is regular-season total touchdowns. `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
+`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `poll`. NFL has **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none (the `nfl_tiebreaker_picks` / `nfl_player_touchdown_totals` tables stay unused). `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
 
 Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
 
@@ -84,7 +84,7 @@ Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when 
 
 - Resolve the focused season’s league with `League::for_guild` / `League::for_season`, then call enum methods (`list_teams`, `standings`, `poll`, …)
 - `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`, NFL uses `EspnNflApi::new(data.http.clone())`
-- User-facing sport words come from `League` (`tiebreaker_unit`, `draw_label`, `finished_label`) — do not hardcode "goals"/"draw" in host formatters
+- User-facing sport words come from `League` (`tiebreaker_unit` is `Option` — `None` hides tie-breaker lines, `draw_label`, `finished_label`) — do not hardcode "goals"/"draw" in host formatters
 - Types from `crate::api`; soccer domain helpers from `crate::soccer`
 - Competition code from `league_competition_code()` via league slug
 - League-specific slash commands: exhaustive `commands_for(League)` in `commands/mod.rs`

@@ -90,9 +90,9 @@ Each member claims one or more franchises. Each team can only be claimed by one 
 
 **Scoring** — same points per game as the soccer leagues: win 3, tie 1, loss 0. Regular-season and playoff games count; preseason and the Pro Bowl do not.
 
-**Tie-breaker** — designate a player with `/pick-player` from your claimed teams' rosters; that player's regular-season **touchdowns scored** (rushing, receiving, and returns — passing touchdowns do not count) break ties on the leaderboard. If you don't pick, tie-breaker touchdowns count as 0.
+**Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NFL seasons.
 
-The background poller fetches finished games and touchdown totals from ESPN's public NFL API (no API key). Every live NFL season tracks the current NFL calendar season (March rolls over to the next season), so start one season per year.
+The background poller fetches finished games from ESPN's public NFL API (no API key). Every live NFL season tracks the current NFL calendar season (March rolls over to the next season), so start one season per year.
 
 ### NBA (`nba`)
 

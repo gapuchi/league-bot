@@ -192,12 +192,17 @@ pub async fn my_team_message(
         }
     };
 
-    if let Some((player_name, team_name)) = pick {
-        message.push_str(&format!(
-            "\n\nTie-breaker: **{player_name}** ({team_name}) — **{tiebreaker_value}** {tiebreaker_unit}"
-        ));
-    } else if !registrations.is_empty() {
-        message.push_str("\n\nTie-breaker: none — use `/pick-player` to designate one.");
+    match (tiebreaker_unit, pick) {
+        (None, _) => {}
+        (Some(unit), Some((player_name, team_name))) => {
+            message.push_str(&format!(
+                "\n\nTie-breaker: **{player_name}** ({team_name}) — **{tiebreaker_value}** {unit}"
+            ));
+        }
+        (Some(_), None) if !registrations.is_empty() => {
+            message.push_str("\n\nTie-breaker: none — use `/pick-player` to designate one.");
+        }
+        (Some(_), None) => {}
     }
 
     Ok(message)

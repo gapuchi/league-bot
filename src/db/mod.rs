@@ -21,7 +21,7 @@ pub use epl::{
 pub use guild_config::GuildConfig;
 pub use league::{competition_code as league_competition_code, exists as league_exists};
 pub use migrate::SCHEMA_VERSION;
-pub use nfl::{NflMatchResult, NflPlayerTouchdownTotal, NflProcessedGame, NflTiebreakerPick};
+pub use nfl::{NflMatchResult, NflProcessedGame};
 pub use registration::Registration;
 pub use season::{RosterPhase, Season, SeasonDisplay, SeasonMeta};
 pub use wc::{
