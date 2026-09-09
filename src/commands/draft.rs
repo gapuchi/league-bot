@@ -15,7 +15,8 @@ use super::helpers::{guild_id, parse_user_ids};
         "draft_status",
         "draft_pick",
         "draft_unpick",
-        "draft_end"
+        "draft_end",
+        "draft_cancel"
     ),
     subcommand_required
 )]
@@ -71,6 +72,22 @@ pub async fn draft_end(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
     let message = draft::freeze_for_guild(ctx.data(), guild_id).await?;
+    ctx.say(message).await?;
+    Ok(())
+}
+
+/// Cancel the draft, clear its picks, and reopen the roster
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_only,
+    rename = "cancel",
+    required_permissions = "MANAGE_GUILD"
+)]
+pub async fn draft_cancel(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.defer().await?;
+    let guild_id = guild_id(&ctx)?;
+    let message = draft::cancel_for_guild(ctx.data(), guild_id).await?;
     ctx.say(message).await?;
     Ok(())
 }

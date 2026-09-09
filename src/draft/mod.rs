@@ -403,6 +403,33 @@ pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Erro
     Ok("Draft ended. Roster is **frozen**.".into())
 }
 
+/// Cancel the current draft: delete the session and order, clear every pick made
+/// during it, and return the roster to `open`.
+pub async fn cancel_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
+    let (season_id, league, has_session) = {
+        let conn = data.db.lock().await;
+        let (season, league) = League::for_guild(&conn, guild_id)?;
+        let has_session = DraftSession::get(&conn, season.id)?.is_some();
+        (season.id, league, has_session)
+    };
+
+    if !has_session {
+        return Ok("No draft to cancel. Start one with `/draft start`.".into());
+    }
+
+    {
+        let conn = data.db.lock().await;
+        for reg in Registration::list_for_season(&conn, season_id)? {
+            league.clear_picks_for_team(&conn, season_id, reg.user_id, reg.team_id)?;
+            Registration::delete(&conn, season_id, reg.user_id, reg.team_id)?;
+        }
+        DraftSession::delete(&conn, season_id)?;
+        Season::set_roster_phase(&conn, season_id, RosterPhase::Open)?;
+    }
+
+    Ok("Draft cancelled. All draft picks were cleared and the roster is **open** again.".into())
+}
+
 pub async fn current_picker_for_guild(data: &Data, guild_id: u64) -> Result<Option<u64>, Error> {
     Ok(load_status(data, guild_id)
         .await?
