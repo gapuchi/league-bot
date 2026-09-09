@@ -9,6 +9,7 @@ pub struct NflMatchResult {
     pub away_team_id: i64,
     pub home_score: i64,
     pub away_score: i64,
+    pub postseason: bool,
 }
 
 impl NflMatchResult {
@@ -16,14 +17,15 @@ impl NflMatchResult {
         conn.execute(
             "
             INSERT INTO nfl_match_results (
-                season_id, game_id, home_team_id, away_team_id, home_score, away_score
+                season_id, game_id, home_team_id, away_team_id, home_score, away_score, postseason
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             ON CONFLICT(season_id, game_id) DO UPDATE SET
                 home_team_id = excluded.home_team_id,
                 away_team_id = excluded.away_team_id,
                 home_score = excluded.home_score,
-                away_score = excluded.away_score
+                away_score = excluded.away_score,
+                postseason = excluded.postseason
             ",
             params![
                 self.season_id,
@@ -32,6 +34,7 @@ impl NflMatchResult {
                 self.away_team_id,
                 self.home_score,
                 self.away_score,
+                self.postseason,
             ],
         )?;
         Ok(())
@@ -40,7 +43,7 @@ impl NflMatchResult {
     pub fn list_for_season(conn: &Connection, season_id: i64) -> rusqlite::Result<Vec<Self>> {
         let mut stmt = conn.prepare(
             "
-            SELECT season_id, game_id, home_team_id, away_team_id, home_score, away_score
+            SELECT season_id, game_id, home_team_id, away_team_id, home_score, away_score, postseason
             FROM nfl_match_results
             WHERE season_id = ?1
             ",
@@ -53,6 +56,7 @@ impl NflMatchResult {
                 away_team_id: row.get(3)?,
                 home_score: row.get(4)?,
                 away_score: row.get(5)?,
+                postseason: row.get(6)?,
             })
         })?;
         rows.collect()
@@ -81,6 +85,7 @@ impl NflMatchResult {
             away_team_id: self.away_team_id,
             home_goals: self.home_score,
             away_goals: self.away_score,
+            playoff: self.postseason,
         }
     }
 }

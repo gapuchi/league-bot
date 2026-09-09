@@ -5,6 +5,9 @@ pub struct ScoringRules {
     pub win: f64,
     pub draw: f64,
     pub loss: f64,
+    /// Points for a win in a playoff/postseason game. `None` when the league scores
+    /// playoff games the same as regular ones.
+    pub playoff_win: Option<f64>,
 }
 
 /// World Cup and Premier League: standard 3 / 1 / 0.
@@ -12,13 +15,16 @@ pub const SOCCER: ScoringRules = ScoringRules {
     win: 3.0,
     draw: 1.0,
     loss: 0.0,
+    playoff_win: None,
 };
 
-/// NFL: 1 for a win, half a point for a tie, nothing for a loss.
+/// NFL: 1 for a regular-season win, half a point for a tie, nothing for a loss, and 3
+/// for a playoff win.
 pub const NFL: ScoringRules = ScoringRules {
     win: 1.0,
     draw: 0.5,
     loss: 0.0,
+    playoff_win: Some(3.0),
 };
 
 pub struct FinishedMatch {
@@ -26,11 +32,20 @@ pub struct FinishedMatch {
     pub away_team_id: i64,
     pub home_goals: i64,
     pub away_goals: i64,
+    pub playoff: bool,
 }
 
-pub fn points_for_result(rules: ScoringRules, team_goals: i64, opponent_goals: i64) -> f64 {
+pub fn points_for_result(
+    rules: ScoringRules,
+    playoff: bool,
+    team_goals: i64,
+    opponent_goals: i64,
+) -> f64 {
     if team_goals > opponent_goals {
-        rules.win
+        match (playoff, rules.playoff_win) {
+            (true, Some(win)) => win,
+            _ => rules.win,
+        }
     } else if team_goals == opponent_goals {
         rules.draw
     } else {
@@ -40,9 +55,9 @@ pub fn points_for_result(rules: ScoringRules, team_goals: i64, opponent_goals: i
 
 pub fn points_for_team_in_match(rules: ScoringRules, team_id: i64, m: &FinishedMatch) -> f64 {
     if team_id == m.home_team_id {
-        points_for_result(rules, m.home_goals, m.away_goals)
+        points_for_result(rules, m.playoff, m.home_goals, m.away_goals)
     } else if team_id == m.away_team_id {
-        points_for_result(rules, m.away_goals, m.home_goals)
+        points_for_result(rules, m.playoff, m.away_goals, m.home_goals)
     } else {
         0.0
     }

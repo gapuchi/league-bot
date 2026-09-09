@@ -61,6 +61,7 @@ pub fn game_report(m: &Match, league_name: &str) -> Option<GameReport> {
         away_score,
         stage: m.stage.clone(),
         round: m.matchday,
+        playoff: false,
         title,
     })
 }

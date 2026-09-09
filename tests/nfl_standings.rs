@@ -26,6 +26,7 @@ fn seeded_conn() -> (Connection, Season) {
         away_team_id: 6,
         home_score: 24,
         away_score: 20,
+        postseason: false,
     }
     .upsert(&conn)
     .unwrap();
@@ -37,6 +38,7 @@ fn seeded_conn() -> (Connection, Season) {
         away_team_id: 6,
         home_score: 17,
         away_score: 17,
+        postseason: false,
     }
     .upsert(&conn)
     .unwrap();
@@ -76,6 +78,29 @@ fn nfl_standings_use_game_results_without_a_tiebreaker() {
     League::Nfl
         .clear_picks_for_team(&conn, season.id, 200, 6)
         .unwrap();
+}
+
+#[test]
+fn nfl_playoff_win_awards_three_points() {
+    let (conn, season) = seeded_conn();
+
+    // Eagles (user 100) win a postseason game over the Chiefs (user 300).
+    NflMatchResult {
+        season_id: season.id,
+        game_id: 500,
+        home_team_id: 21,
+        away_team_id: 12,
+        home_score: 28,
+        away_score: 21,
+        postseason: true,
+    }
+    .upsert(&conn)
+    .unwrap();
+
+    let rows = League::Nfl.standings(&conn, season.id).unwrap();
+    let eagles = rows.iter().find(|r| r.user_id == 100).unwrap();
+    // 1 for the regular-season win + 3 for the playoff win.
+    assert_eq!(eagles.points, 4.0);
 }
 
 #[tokio::test]

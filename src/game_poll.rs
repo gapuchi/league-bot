@@ -27,6 +27,8 @@ pub struct GameReport {
     pub stage: Option<String>,
     /// Matchday (soccer) or week (NFL); persisted by EPL, title-only for NFL.
     pub round: Option<i64>,
+    /// Playoff/postseason game — scored with `ScoringRules::playoff_win` when set.
+    pub playoff: bool,
     /// Announcement title prefix, e.g. `Matchday 3` or `Week 5`.
     pub title: String,
 }
@@ -38,6 +40,7 @@ impl GameReport {
             away_team_id: self.away_team_id,
             home_goals: self.home_score,
             away_goals: self.away_score,
+            playoff: self.playoff,
         }
     }
 
@@ -182,14 +185,22 @@ pub async fn process_game(
 
     let draw_label = league.draw_label();
     let rules = league.scoring();
+    let win_points = match (report.playoff, rules.playoff_win) {
+        (true, Some(win)) => win,
+        _ => rules.win,
+    };
+    let win_label = if report.playoff && rules.playoff_win.is_some() {
+        "playoff win"
+    } else {
+        "win"
+    };
     let description = format!(
         "{correction_line}**{}** {}–{} **{}**\n\n\
-         {update_lines}\nScoring: win {}, {draw_label} {}, loss {}",
+         {update_lines}\nScoring: {win_label} {win_points}, {draw_label} {}, loss {}",
         report.home_name,
         report.home_score,
         report.away_score,
         report.away_name,
-        rules.win,
         rules.draw,
         rules.loss
     );

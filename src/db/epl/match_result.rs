@@ -85,6 +85,7 @@ impl EplMatchResult {
             away_team_id: self.away_team_id,
             home_goals: self.home_goals,
             away_goals: self.away_goals,
+            playoff: false,
         }
     }
 }
