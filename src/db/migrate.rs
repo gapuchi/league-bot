@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const WC_LEAGUE_SLUG: &str = "wc";
 pub const NBA_LEAGUE_SLUG: &str = "nba";
 pub const NFL_LEAGUE_SLUG: &str = "nfl";
@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS nfl_match_results (
     away_team_id            INTEGER NOT NULL,
     home_score              INTEGER NOT NULL,
     away_score              INTEGER NOT NULL,
+    postseason              INTEGER NOT NULL DEFAULT 0,
     finished_at             TEXT,
     PRIMARY KEY (season_id, game_id)
 );

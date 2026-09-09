@@ -470,6 +470,7 @@ impl League {
                 away_team_id: report.away_team_id,
                 home_score: report.home_score,
                 away_score: report.away_score,
+                postseason: report.playoff,
             }
             .upsert(conn),
         }

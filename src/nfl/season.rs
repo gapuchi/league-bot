@@ -91,6 +91,7 @@ pub fn game_report(game: &NflGame) -> Option<GameReport> {
         away_score: away.score?,
         stage: None,
         round: game.week,
+        playoff: game.season_type == POSTSEASON,
         title: round_title(game),
     })
 }

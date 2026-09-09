@@ -35,6 +35,6 @@ fn standings_footer_uses_league_scoring_and_labels() {
     );
     assert_eq!(
         standings_footer(NFL, "tie", None),
-        "Win 1 · Tie 0.5 · Loss 0"
+        "Win 1 · Tie 0.5 · Loss 0 · Playoff win 3"
     );
 }

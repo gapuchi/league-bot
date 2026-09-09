@@ -25,6 +25,9 @@ pub fn standings_footer(
         "Win {} · {draw} {} · Loss {}",
         rules.win, rules.draw, rules.loss
     );
+    if let Some(playoff_win) = rules.playoff_win {
+        footer.push_str(&format!(" · Playoff win {playoff_win}"));
+    }
     if let Some(unit) = tiebreaker_unit {
         footer.push_str(&format!(" · TB = tie-breaker {unit}"));
     }
