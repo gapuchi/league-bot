@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 pub const SCHEMA_VERSION: i64 = 2;
 pub const WC_LEAGUE_SLUG: &str = "wc";
@@ -223,12 +223,49 @@ CREATE TABLE IF NOT EXISTS epl_player_goal_totals (
 );
 ";
 
-/// Initialize a fresh database schema. There is no upgrade path from older layouts —
-/// delete the SQLite file and re-run if the schema is out of date.
+/// Initialize the database schema and bring an existing file up to
+/// `SCHEMA_VERSION`. Fresh databases get the current schema directly; databases
+/// left at an older version have the intervening upgrades applied at startup.
 pub fn run(conn: &Connection) -> rusqlite::Result<()> {
+    let installed = installed_version(conn)?;
     conn.execute_batch(CREATE_SCHEMA)?;
     seed_catalog(conn)?;
+    if let Some(version) = installed {
+        upgrade_from(conn, version)?;
+    }
     set_version(conn, SCHEMA_VERSION)?;
+    Ok(())
+}
+
+/// Version recorded in an existing database, or `None` for a fresh file whose
+/// `schema_version` table has not been created yet. Read before `CREATE_SCHEMA`
+/// so a brand-new database (which gets the current schema) is not mistaken for
+/// an old one that needs upgrading.
+fn installed_version(conn: &Connection) -> rusqlite::Result<Option<i64>> {
+    let has_table: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if !has_table {
+        return Ok(None);
+    }
+    conn.query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+        .optional()
+}
+
+/// Apply each upgrade step whose target version is newer than the database's
+/// recorded `version`. `CREATE_SCHEMA` has already added any wholly-new tables;
+/// these steps alter tables that predate the columns they add.
+fn upgrade_from(conn: &Connection, version: i64) -> rusqlite::Result<()> {
+    if version < 2 {
+        conn.execute_batch(
+            "ALTER TABLE nfl_match_results ADD COLUMN postseason INTEGER NOT NULL DEFAULT 0",
+        )?;
+    }
     Ok(())
 }
 
