@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 pub const SCHEMA_VERSION: i64 = 2;
 pub const WC_LEAGUE_SLUG: &str = "wc";
@@ -223,13 +223,81 @@ CREATE TABLE IF NOT EXISTS epl_player_goal_totals (
 );
 ";
 
-/// Initialize a fresh database schema. There is no upgrade path from older layouts —
-/// delete the SQLite file and re-run if the schema is out of date.
+/// Initialize the schema on a fresh database, or bring an existing one up to
+/// `SCHEMA_VERSION`. `CREATE_SCHEMA` (all `IF NOT EXISTS`) seeds fresh databases and
+/// adds whole missing tables; `migrate` handles in-place column additions to tables that
+/// already existed, which `CREATE TABLE IF NOT EXISTS` cannot do.
 pub fn run(conn: &Connection) -> rusqlite::Result<()> {
+    let existing_version = existing_version(conn)?;
     conn.execute_batch(CREATE_SCHEMA)?;
     seed_catalog(conn)?;
+    if let Some(from_version) = existing_version {
+        migrate(conn, from_version)?;
+    }
     set_version(conn, SCHEMA_VERSION)?;
     Ok(())
+}
+
+/// Version recorded before this run, or `None` when the database is fresh (no
+/// `schema_version` table yet), in which case `CREATE_SCHEMA` already builds the
+/// current layout and no migration is needed.
+fn existing_version(conn: &Connection) -> rusqlite::Result<Option<i64>> {
+    let has_schema_version = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !has_schema_version {
+        return Ok(None);
+    }
+    let version = conn
+        .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
+            row.get(0)
+        })
+        .optional()?
+        .unwrap_or(1);
+    Ok(Some(version))
+}
+
+fn migrate(conn: &Connection, from_version: i64) -> rusqlite::Result<()> {
+    if from_version < 2 {
+        add_column_if_missing(
+            conn,
+            "nfl_match_results",
+            "postseason",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+    }
+    Ok(())
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> rusqlite::Result<()> {
+    if !column_exists(conn, table, column)? {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        ))?;
+    }
+    Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn set_version(conn: &Connection, version: i64) -> rusqlite::Result<()> {
