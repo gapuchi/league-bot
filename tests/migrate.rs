@@ -60,6 +60,47 @@ fn fresh_init_seeds_catalog_without_seasons() {
 }
 
 #[test]
+fn upgrade_adds_postseason_column_to_v1_nfl_results() {
+    let conn = Connection::open_in_memory().unwrap();
+
+    // Recreate the v1 layout of nfl_match_results (no postseason column) and
+    // stamp the database at schema version 1, as an existing file would be.
+    conn.execute_batch(
+        "
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (1);
+        CREATE TABLE nfl_match_results (
+            season_id    INTEGER NOT NULL,
+            game_id      INTEGER NOT NULL,
+            home_team_id INTEGER NOT NULL,
+            away_team_id INTEGER NOT NULL,
+            home_score   INTEGER NOT NULL,
+            away_score   INTEGER NOT NULL,
+            finished_at  TEXT,
+            PRIMARY KEY (season_id, game_id)
+        );
+        ",
+    )
+    .unwrap();
+
+    db::init(&conn).unwrap();
+
+    let version: i64 = conn
+        .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+
+    let postseason_default: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('nfl_match_results') WHERE name = 'postseason'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(postseason_default, 1);
+}
+
+#[test]
 fn init_is_idempotent() {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();

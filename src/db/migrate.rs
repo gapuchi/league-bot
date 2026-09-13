@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 pub const SCHEMA_VERSION: i64 = 2;
 pub const WC_LEAGUE_SLUG: &str = "wc";
@@ -223,11 +223,20 @@ CREATE TABLE IF NOT EXISTS epl_player_goal_totals (
 );
 ";
 
-/// Initialize a fresh database schema. There is no upgrade path from older layouts —
-/// delete the SQLite file and re-run if the schema is out of date.
 pub fn run(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(CREATE_SCHEMA)?;
     seed_catalog(conn)?;
+
+    let version: Option<i64> = conn
+        .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
+        .optional()?;
+
+    if version.is_some_and(|v| v < 2) {
+        conn.execute_batch(
+            "ALTER TABLE nfl_match_results ADD COLUMN postseason INTEGER NOT NULL DEFAULT 0",
+        )?;
+    }
+
     set_version(conn, SCHEMA_VERSION)?;
     Ok(())
 }
