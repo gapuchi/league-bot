@@ -32,9 +32,9 @@ Do not invent an API provider or scoring rules when unclear — ask briefly, the
 | Term | Meaning |
 |------|---------|
 | **League** | Compile-time type (`League` enum + slug) |
-| **Season** | Runtime guild instance (`season_id`); created via `/config season` |
-| **Command focus** | `default_season_id` — slash commands |
-| **Live season** | `polling_enabled` — background poller |
+| **Season** | Runtime guild instance (`season_id`); created via `/season start <league>` |
+| **Target season** | `season::resolve(conn, guild_id, league)` — explicit `league` choice, else the guild's only live season |
+| **Live season** | `polling_enabled` — background poller; one per league per guild |
 
 ## Workflow
 
@@ -43,8 +43,8 @@ Work bottom-up. Keep host files free of league-specific SQL/API types.
 ### 1. Catalog + schema
 
 - Ensure `seed_catalog` in `src/db/migrate.rs` has the slug (nba already seeded).
-- If tables are missing: extend greenfield `CREATE_SCHEMA` (no upgrade migrations; wipe DB if stale); accessors under `src/db/<slug>/`; re-export from `src/db/mod.rs`.
-- Shared tables only: `leagues`, `seasons`, `guild_config`, `teams`, `registrations`.
+- Add the league's tables to `CREATE_SCHEMA`, bump `SCHEMA_VERSION`, and add an `upgrade` step in `migrate.rs` if existing tables change; accessors under `src/db/<slug>/`; re-export from `src/db/mod.rs`.
+- Shared tables only: `leagues`, `seasons`, `registrations`, `draft_sessions`, `draft_participants`.
 
 ### 2. League module (`src/<slug>/`)
 
@@ -66,6 +66,7 @@ Export via `src/<slug>/mod.rs`. Register `pub mod <slug>;` in `src/lib.rs`.
 Add variant and update **every** exhaustive match:
 
 - `ALL`
+- `#[name = "<Display>"]` + `#[name = "<slug>"]` on the variant (`League` is the `league` slash choice)
 - `from_slug` / `slug` / `display_name`
 - `tiebreaker_unit` (`Option`; `None` = no tie-breaker) / `draw_label` / `finished_label` (user-facing sport words)
 - `list_teams`, `team_not_found_message`
@@ -80,15 +81,15 @@ Extend unit tests: slug resolves; unknown still `None`; `ALL` includes the new v
 
 ### 4. Commands
 
-- **Shared** (already registered): claim/assign/unclaim, teams, standings, season, config — work via `League` once arms exist.
-- **League-only**: add adapters under `src/commands/<slug>/`, guard with `ensure_focused_league(ctx, League::X)`, register in `commands_for` in `src/commands/mod.rs`:
+- **Shared** (already registered): claim/assign/unclaim, team(s), undrafted, standings, pick-player, draft, season — work via `League` once arms exist; the new variant appears in every `league` dropdown automatically.
+- **League-only**: add adapters under `src/commands/<slug>/`, resolve the season with `season::resolve(&conn, guild_id, Some(League::X))` (see `wc/remaining.rs`), register in `commands_for` in `src/commands/mod.rs`:
 
 ```rust
 fn commands_for(league: League) -> Vec<...> {
     match league {
         League::Wc => vec![remaining()],
-        League::Nfl => vec![/* nfl-only cmds, or vec![] */],
-        League::Nba => vec![],
+        League::Epl | League::Nfl => vec![],
+        League::Nba => vec![/* nba-only cmds, or vec![] */],
     }
 }
 ```
@@ -110,13 +111,13 @@ cargo test
 cargo clippy -- -D warnings
 ```
 
-Manual smoke: `/config season` with the new slug → `/config channel` → claim/standings → confirm poller logs for live seasons only.
+Manual smoke: `/season start <league>` → `/season channel` → `/claim` / `/standings` (with and without the `league` option while another season is live) → confirm poller logs for live seasons only.
 
 ## Done when
 
 - [ ] `League::from_slug("<slug>")` is `Some`
-- [ ] `/config season` accepts the slug; catalog-only slugs still rejected
-- [ ] Shared commands work for a focused season of this league
+- [ ] `/season start` offers the league in its dropdown
+- [ ] Shared commands work with `league:<new>` while another league's season is live
 - [ ] Poller calls `League::poll` for live seasons (or explicitly no-ops with a clear outcome)
 - [ ] No new `Wc*` / `Nfl*` / league SQL types in `registration.rs`, host `standings.rs`, `game_poll.rs`, `types.rs`, `db/registration.rs`, host `poller.rs`
 - [ ] Tests + clippy clean; README/env updated if user-visible
@@ -124,7 +125,7 @@ Manual smoke: `/config season` with the new slug → `/config channel` → claim
 ## Do not
 
 - Add runtime “register league” plugins or DB-only playable leagues
-- Key the poller off command focus (`default_season_id`)
+- Add per-guild "current season" state; the `league` option plus `season::resolve` is the whole story
 - Put HTTP/Discord in `src/db/`
 - Copy WC tournament logic (`soccer::classify_teams`, `/remaining`) into leagues that are not WC-shaped
 - Leave a `League` variant with missing match arms (won’t compile — fix all arms)

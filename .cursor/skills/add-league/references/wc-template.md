@@ -8,10 +8,10 @@ Use while implementing a new league. Copy structure, not tournament rules.
 |------|------|
 | `src/league.rs` | `League::Wc` + method arms |
 | `src/poller.rs` | Live seasons → `League::from_slug` → `poll` (no WC types) |
-| `src/registration.rs` | `League::for_guild` / `list_teams` / `clear_picks_for_team` |
+| `src/registration.rs` | `season::resolve` / `list_teams` / `clear_picks_for_team` |
+| `src/season.rs` | `resolve` (target season), start/end/channel/list use cases |
 | `src/standings.rs` | Host-only `StandingRow` + formatting |
-| `src/commands/mod.rs` | `commands_for(League::Wc)` → remaining, pick-player |
-| `src/commands/helpers.rs` | `ensure_focused_league` |
+| `src/commands/mod.rs` | `commands_for(League::Wc)` → remaining |
 | `src/types.rs` | `Data { db, http }` only |
 | `src/main.rs` | Fail-fast `FOOTBALL_DATA_API_TOKEN` |
 
@@ -44,7 +44,7 @@ Use while implementing a new league. Copy structure, not tournament rules.
 |------|-------------------|
 | `commands/registration.rs` | Shared |
 | `commands/standings.rs` | Shared surface, dispatches via `League` |
-| `commands/wc/remaining.rs` | WC-only + focus guard |
+| `commands/wc/remaining.rs` | WC-only; resolves `Some(League::Wc)` itself |
 
 ## Non-soccer reference: NFL
 

@@ -2,7 +2,7 @@
 
 Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in a configured channel.
 
-The bot can serve **multiple Discord servers** at once. Each server has its own team claims, standings, announcement channel, and league selection. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, and NFL are fully supported today; NBA pools are coming soon.
+The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, and NFL are fully supported today; NBA pools are coming soon.
 
 ## Setup
 
@@ -13,7 +13,7 @@ The bot can serve **multiple Discord servers** at once. Each server has its own 
    - **Scopes:** `bot`, `applications.commands`
    - **Bot permissions:** View Channels, Send Messages, Embed Links, Create Public Threads, Send Messages in Threads
 
-   Open the generated URL to add the bot. It must be able to send messages (including embeds) in the channel you set with `/config channel`.
+   Open the generated URL to add the bot. It must be able to send messages (including embeds) in the channel you set with `/season channel`.
 
 ### Local development
 
@@ -33,24 +33,37 @@ Slash commands are registered automatically in each guild the bot joins on start
 | `FOOTBALL_DATA_API_TOKEN` | yes | football-data.org API token (World Cup, Premier League) |
 | `DATABASE_PATH` | no | SQLite database path (default: `league_bot.db`) |
 
-## Configuration
+## Seasons
 
-Each Discord server configures the bot independently. On a **new** server, an admin must start a season first — there is no default until `/season start` has been run in that server. Run `/help season` for lifecycle commands and `/help config` for focus and channel setup.
+Each Discord server configures the bot independently. On a **new** server, an admin must start a season first — nothing works until `/season start` has been run there.
 
-Match announcements are only sent after `/config channel` has been set for that season. Each season keeps its own channel, registrations, scores, and tie-breaker picks. Gameplay commands always target the **command focus** season (default season) for the server where the command was run. The background poller processes seasons with match polling enabled, which is separate from command focus.
+| Command | Who | What |
+|---------|-----|------|
+| `/season start <league> [name]` | admin | Create (or resume) a season. `name` defaults to the league plus the current year, e.g. `NFL 2026`. Starting a season **ends** that league's previous live season in the server, so a new year is one command. |
+| `/season end [league]` | admin | Stop match polling. Data is kept; `/standings league:<league>` still works. |
+| `/season channel <#channel> [league]` | admin | Where match announcements are posted. Nothing is announced until this is set. |
+| `/season list` | anyone | Every season in the server with live/ended state, roster phase, and channel. |
 
-Use `/season status` to see which league and season commands currently target in this server. Admins run `/season start` to create or resume a season (enables polling and sets focus) and `/season end` to stop match polling without deleting season data.
+### The `league` option
+
+Every gameplay command (`/claim`, `/standings`, `/draft …`, `/team`, …) takes an optional `league` choice (World Cup, Premier League, NFL).
+
+- **One live season in the server** — leave it out; the bot uses that season.
+- **Several live seasons** — the bot asks which league; pick it from the dropdown.
+- **An ended season** — pass `league` explicitly to look at its standings or roster.
+
+There is no server-wide "current league" setting to switch.
 
 ### Team selection and pre-season draft
 
-Teams are selected through `/draft pick`, with or without a snake draft:
+Teams can be claimed freely or through a snake draft:
 
-1. Season roster phase starts as `open`; members may freely use `/draft pick`.
-2. `/draft start` mentioning every player (`@alice @bob @carol`) — order is **randomized**; phase becomes `drafting`.
-3. During the draft, `/draft pick` is restricted to the player on the clock; admins may `/assign` **only** for that player. `/unclaim` is blocked. The last picker may `/draft unpick` to undo their pick until the next person picks.
-4. The draft runs for full rounds only — each player gets the same number of teams (the pool size rounded down to a multiple of the player count). When that pick limit is reached, or when every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also run `/draft end` to freeze the roster early.
+1. A new season's roster is `open`; members use `/claim <team>`. Admins can `/assign` a team to someone, and members can `/unclaim`.
+2. An admin runs `/draft start` mentioning every player (`@alice @bob @carol`). Order is **randomized** and the roster becomes `drafting`. `/claim` is blocked until the draft ends.
+3. During the draft, `/draft pick <team>` is restricted to the player on the clock; admins may `/assign` **only** for that player. The last picker may `/draft unpick` to undo their pick until the next person picks.
+4. The draft runs for full rounds only — each player gets the same number of teams (the pool size rounded down to a multiple of the player count). When that pick limit is reached, or when every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also `/draft end` to freeze early, or `/draft cancel` to scrap the draft, clear its picks, and reopen the roster.
 
-Use `/draft status` anytime for order, whose turn, and remaining teams.
+Use `/draft status` anytime for order, whose turn, and remaining teams; `/undrafted` lists teams nobody holds.
 
 ## Commands
 
