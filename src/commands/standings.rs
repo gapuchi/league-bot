@@ -2,6 +2,7 @@ use poise::serenity_prelude as serenity;
 
 use crate::{
     league::League,
+    season,
     standings::{
         format_standings_detail_lines, format_standings_summary_lines, standings_footer,
         standings_ranks,
@@ -13,17 +14,20 @@ use super::helpers::guild_id;
 
 /// Show the points leaderboard
 #[poise::command(prefix_command, slash_command, guild_only)]
-pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn standings(
+    ctx: Context<'_>,
+    #[description = "League (optional when only one season is live)"] league: Option<League>,
+) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
-    let (league, rows) = {
+    let (season, league, rows) = {
         let conn = ctx.data().db.lock().await;
-        let (season, league) = League::for_guild(&conn, guild_id)?;
-        (league, league.standings(&conn, season.id)?)
+        let (season, league) = season::resolve(&conn, guild_id, league)?;
+        let rows = league.standings(&conn, season.id)?;
+        (season, league, rows)
     };
-    let league_name = league.display_name();
 
     if rows.is_empty() {
-        ctx.say("No standings yet — pick teams with `/draft pick` first.")
+        ctx.say("No standings yet — claim teams with `/claim` first.")
             .await?;
         return Ok(());
     }
@@ -38,7 +42,7 @@ pub async fn standings(ctx: Context<'_>) -> Result<(), Error> {
     let detail_lines = format_standings_detail_lines(&rows, &ranks, league.tiebreaker_unit());
 
     let summary_embed = serenity::CreateEmbed::default()
-        .title(format!("{league_name} standings"))
+        .title(format!("{} standings", season.name))
         .description(summary_lines.join("\n"))
         .footer(serenity::CreateEmbedFooter::new(&footer));
 

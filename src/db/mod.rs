@@ -1,6 +1,5 @@
 mod draft;
 mod epl;
-mod guild_config;
 mod league;
 mod league_macros;
 mod migrate;
@@ -17,12 +16,11 @@ pub use draft::{
 pub use epl::{
     EplMatchResult, EplPlayerGoalTotal, EplProcessedMatch, EplTiebreakerPick,
 };
-pub use guild_config::GuildConfig;
 pub use league::{competition_code as league_competition_code, exists as league_exists};
 pub use migrate::SCHEMA_VERSION;
 pub use nfl::{NflMatchResult, NflProcessedGame};
 pub use registration::Registration;
-pub use season::{RosterPhase, Season, SeasonDisplay, SeasonMeta};
+pub use season::{RosterPhase, Season, SeasonMeta};
 pub use wc::{
     WcAnnouncedElimination, WcMatchResult, WcPlayerGoalTotal, WcProcessedMatch, WcTiebreakerPick,
 };

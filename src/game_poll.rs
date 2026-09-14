@@ -6,6 +6,7 @@ use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
 
 use crate::{
+    clock::unix_timestamp_secs,
     db::{Registration, SeasonMeta},
     league::League,
     scoring::{self, FinishedMatch},
@@ -54,14 +55,6 @@ struct GameUpdate {
     team_name: String,
     points_earned: f64,
     total_points: f64,
-}
-
-pub fn unix_timestamp_secs() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
 }
 
 /// Cache `(player_id, total)` tie-breaker stats for every polled season, returning a log

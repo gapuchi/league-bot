@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension};
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 pub const WC_LEAGUE_SLUG: &str = "wc";
 pub const NBA_LEAGUE_SLUG: &str = "nba";
 pub const NFL_LEAGUE_SLUG: &str = "nfl";
@@ -43,11 +43,6 @@ CREATE TABLE IF NOT EXISTS draft_participants (
     user_id                 INTEGER NOT NULL,
     PRIMARY KEY (season_id, position),
     UNIQUE (season_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS guild_config (
-    guild_id                INTEGER PRIMARY KEY,
-    default_season_id       INTEGER NOT NULL REFERENCES seasons(id)
 );
 
 CREATE TABLE IF NOT EXISTS registrations (
@@ -196,6 +191,22 @@ fn upgrade(conn: &Connection, from: i64) -> rusqlite::Result<()> {
         }
         drop_column_if_exists(conn, "seasons", "starts_at")?;
         drop_column_if_exists(conn, "seasons", "ends_at")?;
+    }
+    if from < 4 {
+        // Commands now resolve the season from what is live, so a guild may have at
+        // most one live season per league; keep the newest and end the rest.
+        conn.execute_batch(
+            "
+            DROP TABLE IF EXISTS guild_config;
+            UPDATE seasons
+            SET polling_enabled = 0
+            WHERE polling_enabled = 1
+              AND id NOT IN (
+                  SELECT MAX(id) FROM seasons WHERE polling_enabled = 1
+                  GROUP BY guild_id, league_id
+              );
+            ",
+        )?;
     }
     Ok(())
 }

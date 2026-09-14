@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use league_bot::{
-    db::{self, GuildConfig, NflMatchResult, Registration, Season},
+    db::{self, NflMatchResult, Registration, Season},
     league::League,
     standings::{format_standing_detail, standings_ranks},
     types::Data,
@@ -106,14 +106,13 @@ fn nfl_playoff_win_awards_three_points() {
 #[tokio::test]
 async fn nfl_pick_player_is_declined_without_network() {
     let (conn, season) = seeded_conn();
-    GuildConfig::set_default_season_id(&conn, 111, season.id).unwrap();
     let data = Data {
         db: Arc::new(Mutex::new(conn)),
         http: reqwest::Client::new(),
     };
 
     let message = League::Nfl
-        .pick_tiebreaker_player(&data, 111, 200, "Lamb")
+        .pick_tiebreaker_player(&data, season.id, 200, "Lamb")
         .await
         .unwrap();
     assert!(message.contains("no tie-breaker"), "{message}");

@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     db::{Registration, RosterPhase, Season},
     draft,
-    league::League,
+    league::{CatalogTeam, League},
+    season,
     types::{Data, Error},
 };
 
@@ -19,85 +20,80 @@ fn phase_blocks_open_claims(phase: RosterPhase) -> Option<&'static str> {
     }
 }
 
-async fn focused_league_teams(
+async fn target_with_teams(
     data: &Data,
     guild_id: u64,
-) -> Result<(i64, League, Vec<crate::league::CatalogTeam>), Error> {
-    let (season_id, league) = {
+    league: Option<League>,
+) -> Result<(Season, League, Vec<CatalogTeam>), Error> {
+    let (season, league) = {
         let conn = data.db.lock().await;
-        let (season, league) = League::for_guild(&conn, guild_id)?;
-        (season.id, league)
+        season::resolve(&conn, guild_id, league)?
     };
     let teams = league.list_teams(data).await?;
-    Ok((season_id, league, teams))
+    Ok((season, league, teams))
 }
 
-pub async fn pick_for_user(
+async fn claim(
+    data: &Data,
+    season_id: i64,
+    league: League,
+    teams: &[CatalogTeam],
+    user_id: u64,
+    team_query: &str,
+) -> Result<Result<String, String>, Error> {
+    let Some(selected) = league.find_team(teams, team_query) else {
+        return Ok(Err(league.team_not_found_message(team_query)));
+    };
+
+    let conn = data.db.lock().await;
+    if let Some(existing) = Registration::get_by_team(&conn, season_id, selected.id)?
+        && existing.user_id != user_id
+    {
+        return Ok(Err(format!(
+            "**{}** is already claimed by <@{}>.",
+            selected.name, existing.user_id
+        )));
+    }
+    Registration::upsert(&conn, season_id, user_id, selected.id, &selected.name)?;
+    Ok(Ok(selected.name.clone()))
+}
+
+/// Open-roster claim. During a draft the caller is redirected to `/draft pick`.
+pub async fn claim_for_user(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
     team_query: &str,
 ) -> Result<String, Error> {
-    let phase = {
-        let conn = data.db.lock().await;
-        Season::default_for_guild(&conn, guild_id)?.roster_phase
-    };
-
-    match phase {
-        RosterPhase::Drafting => {
-            return Ok(draft::pick_for_user(data, guild_id, user_id, team_query)
-                .await?
-                .into_message());
-        }
-        RosterPhase::Frozen => {
-            return Ok("The roster is frozen after the draft. Picks are locked.".into());
-        }
-        RosterPhase::Open => {}
+    let (season, league, teams) = target_with_teams(data, guild_id, league).await?;
+    if let Some(msg) = phase_blocks_open_claims(season.roster_phase) {
+        return Ok(msg.into());
     }
 
-    let (season_id, league, api_teams) = focused_league_teams(data, guild_id).await?;
-    let Some(selected) = league.find_team(&api_teams, team_query) else {
-        return Ok(league.team_not_found_message(team_query));
-    };
-
-    {
-        let conn = data.db.lock().await;
-        if let Some(existing) = Registration::get_by_team(&conn, season_id, selected.id)?
-            && existing.user_id != user_id
-        {
-            return Ok(format!(
-                "{} is already claimed by <@{}>.",
-                selected.name, existing.user_id
-            ));
-        }
-
-        Registration::upsert(&conn, season_id, user_id, selected.id, &selected.name)?;
-    }
-
-    Ok(format!(
-        "You've picked **{}**. You'll earn points when they play.",
-        selected.name
-    ))
+    Ok(match claim(data, season.id, league, &teams, user_id, team_query).await? {
+        Ok(name) => format!("You've claimed **{name}**. You'll earn points when they play."),
+        Err(msg) => msg,
+    })
 }
 
 pub async fn assign_for_user(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
     team_query: &str,
     assignee_mention: &str,
 ) -> Result<String, Error> {
-    let phase = {
-        let conn = data.db.lock().await;
-        Season::default_for_guild(&conn, guild_id)?.roster_phase
-    };
+    let (season, league, teams) = target_with_teams(data, guild_id, league).await?;
 
-    match phase {
+    match season.roster_phase {
         RosterPhase::Frozen => {
             return Ok("The roster is frozen after the draft. Assignments are locked.".into());
         }
         RosterPhase::Drafting => {
-            let outcome = draft::pick_for_user(data, guild_id, user_id, team_query).await?;
+            let outcome =
+                draft::pick_for_user(data, guild_id, Some(league), user_id, team_query).await?;
             let is_pick = matches!(&outcome, draft::PickOutcome::Picked { .. });
             let msg = outcome.into_message();
             return Ok(if is_pick {
@@ -109,58 +105,35 @@ pub async fn assign_for_user(
         RosterPhase::Open => {}
     }
 
-    let (season_id, league, api_teams) = focused_league_teams(data, guild_id).await?;
-    let Some(selected) = league.find_team(&api_teams, team_query) else {
-        return Ok(league.team_not_found_message(team_query));
-    };
-
-    {
-        let conn = data.db.lock().await;
-        if let Some(existing) = Registration::get_by_team(&conn, season_id, selected.id)?
-            && existing.user_id != user_id
-        {
-            return Ok(format!(
-                "**{}** is already claimed by <@{}>.",
-                selected.name, existing.user_id
-            ));
-        }
-
-        Registration::upsert(&conn, season_id, user_id, selected.id, &selected.name)?;
-    }
-
-    Ok(format!(
-        "**{}** has been claimed by {}.",
-        selected.name, assignee_mention
-    ))
+    Ok(match claim(data, season.id, league, &teams, user_id, team_query).await? {
+        Ok(name) => format!("**{name}** has been claimed by {assignee_mention}."),
+        Err(msg) => msg,
+    })
 }
 
 pub async fn unclaim_for_user(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
     team_query: &str,
 ) -> Result<String, Error> {
-    {
-        let conn = data.db.lock().await;
-        let season = Season::default_for_guild(&conn, guild_id)?;
-        if let Some(msg) = phase_blocks_open_claims(season.roster_phase) {
-            return Ok(msg.into());
-        }
+    let (season, league, teams) = target_with_teams(data, guild_id, league).await?;
+    if let Some(msg) = phase_blocks_open_claims(season.roster_phase) {
+        return Ok(msg.into());
     }
-
-    let (season_id, league, api_teams) = focused_league_teams(data, guild_id).await?;
-    let Some(selected) = league.find_team(&api_teams, team_query) else {
+    let Some(selected) = league.find_team(&teams, team_query) else {
         return Ok(league.team_not_found_message(team_query));
     };
 
     let removed = {
         let conn = data.db.lock().await;
-        league.clear_picks_for_team(&conn, season_id, user_id, selected.id)?;
-        Registration::delete(&conn, season_id, user_id, selected.id)?
+        league.clear_picks_for_team(&conn, season.id, user_id, selected.id)?;
+        Registration::delete(&conn, season.id, user_id, selected.id)?
     };
 
     Ok(if removed {
-        "That team has been unclaimed.".into()
+        format!("**{}** has been unclaimed.", selected.name)
     } else {
         "You haven't claimed that team. Use `/team` to see your teams.".into()
     })
@@ -169,30 +142,45 @@ pub async fn unclaim_for_user(
 pub async fn my_team_message(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
 ) -> Result<String, Error> {
-    let (registrations, pick, tiebreaker_value, tiebreaker_unit) = {
+    let (season, league) = {
         let conn = data.db.lock().await;
-        let (season, league) = League::for_guild(&conn, guild_id)?;
-        let registrations = Registration::list_for_user(&conn, season.id, user_id)?;
-        let pick = league.tiebreaker_pick_for_user(&conn, season.id, user_id)?;
-        let tiebreaker_value = league.tiebreaker_value_for_user(&conn, season.id, user_id)?;
-        (registrations, pick, tiebreaker_value, league.tiebreaker_unit())
+        season::resolve(&conn, guild_id, league)?
+    };
+    let (registrations, pick, tiebreaker_value) = {
+        let conn = data.db.lock().await;
+        (
+            Registration::list_for_user(&conn, season.id, user_id)?,
+            league.tiebreaker_pick_for_user(&conn, season.id, user_id)?,
+            league.tiebreaker_value_for_user(&conn, season.id, user_id)?,
+        )
     };
 
     let mut message = match registrations.as_slice() {
-        [] => "You haven't picked any teams yet. Use `/draft pick` to choose one.".into(),
-        [registration] => format!("You're representing **{}**.", registration.team_name),
+        [] => format!(
+            "You haven't claimed any {} teams yet. Use `/claim` to choose one.",
+            league.display_name()
+        ),
+        [registration] => format!(
+            "{}: you're representing **{}**.",
+            season.name, registration.team_name
+        ),
         _ => {
             let teams: Vec<&str> = registrations
                 .iter()
                 .map(|registration| registration.team_name.as_str())
                 .collect();
-            format!("You're representing: **{}**.", teams.join("**, **"))
+            format!(
+                "{}: you're representing **{}**.",
+                season.name,
+                teams.join("**, **")
+            )
         }
     };
 
-    match (tiebreaker_unit, pick) {
+    match (league.tiebreaker_unit(), pick) {
         (None, _) => {}
         (Some(unit), Some((player_name, team_name))) => {
             message.push_str(&format!(
@@ -211,19 +199,21 @@ pub async fn my_team_message(
 pub enum SeasonTeamsList {
     Empty,
     ByUser {
-        league_name: &'static str,
+        title: String,
         assignments: Vec<(u64, Vec<String>)>,
     },
 }
 
-pub async fn list_season_teams(data: &Data, guild_id: u64) -> Result<SeasonTeamsList, Error> {
-    let (league_name, registrations) = {
+pub async fn list_season_teams(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<SeasonTeamsList, Error> {
+    let (season, registrations) = {
         let conn = data.db.lock().await;
-        let (season, league) = League::for_guild(&conn, guild_id)?;
-        (
-            league.display_name(),
-            Registration::list_for_season(&conn, season.id)?,
-        )
+        let (season, _) = season::resolve(&conn, guild_id, league)?;
+        let registrations = Registration::list_for_season(&conn, season.id)?;
+        (season, registrations)
     };
 
     if registrations.is_empty() {
@@ -246,7 +236,7 @@ pub async fn list_season_teams(data: &Data, guild_id: u64) -> Result<SeasonTeams
     assignments.sort_unstable_by_key(|(user_id, _)| *user_id);
 
     Ok(SeasonTeamsList::ByUser {
-        league_name,
+        title: format!("{} team assignments", season.name),
         assignments,
     })
 }
@@ -256,12 +246,15 @@ pub enum UnclaimedTeams {
     Available(Vec<String>),
 }
 
-pub async fn unclaimed_teams(data: &Data, guild_id: u64) -> Result<UnclaimedTeams, Error> {
-    let (_season_id, _league, api_teams) = focused_league_teams(data, guild_id).await?;
+pub async fn unclaimed_teams(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<UnclaimedTeams, Error> {
+    let (season, _, api_teams) = target_with_teams(data, guild_id, league).await?;
 
     let claimed_team_ids = {
         let conn = data.db.lock().await;
-        let (season, _) = League::for_guild(&conn, guild_id)?;
         Registration::list_for_season(&conn, season.id)?
             .iter()
             .map(|registration| registration.team_id)

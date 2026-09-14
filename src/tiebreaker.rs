@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 
 use crate::{
-    db::{Registration, Season},
+    db::Registration,
     types::{Data, Error},
 };
 
@@ -15,17 +15,16 @@ pub struct RosterPlayer {
 }
 
 pub const NO_TEAMS_MESSAGE: &str =
-    "Pick a team first with `/draft pick`, then pick a player from that roster.";
+    "Claim a team first with `/claim` (or `/draft pick` during a draft), then pick a player from that roster.";
 
-/// `(team_id, team_name)` for every team the user has claimed in the focused season.
+/// `(team_id, team_name)` for every team the user has claimed in the season.
 pub async fn claimed_teams(
     data: &Data,
-    guild_id: u64,
+    season_id: i64,
     user_id: u64,
 ) -> Result<Vec<(i64, String)>, Error> {
     let conn = data.db.lock().await;
-    let season = Season::default_for_guild(&conn, guild_id)?;
-    Ok(Registration::list_for_user(&conn, season.id, user_id)?
+    Ok(Registration::list_for_user(&conn, season_id, user_id)?
         .into_iter()
         .map(|r| (r.team_id, r.team_name))
         .collect())
@@ -46,7 +45,7 @@ pub fn find_players<'a>(players: &'a [RosterPlayer], query: &str) -> Vec<&'a Ros
 /// player for the season.
 pub async fn resolve_pick(
     data: &Data,
-    guild_id: u64,
+    season_id: i64,
     user_id: u64,
     player_query: &str,
     players: &[RosterPlayer],
@@ -60,8 +59,7 @@ pub async fn resolve_pick(
         )),
         [selected] => {
             let conn = data.db.lock().await;
-            let season = Season::default_for_guild(&conn, guild_id)?;
-            upsert(&conn, season.id, user_id, selected)?;
+            upsert(&conn, season_id, user_id, selected)?;
             Ok(format!(
                 "Tie-breaker player set to **{}** ({})",
                 selected.player_name, selected.team_name
