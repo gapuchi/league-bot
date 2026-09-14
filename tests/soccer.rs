@@ -16,8 +16,6 @@ fn match_team(id: i64, name: &str) -> MatchTeam {
     MatchTeam {
         id: Some(id),
         name: Some(name.into()),
-        short_name: None,
-        tla: None,
     }
 }
 
@@ -331,14 +329,10 @@ fn placeholder_knockout_slots_are_ignored() {
         home_team: MatchTeam {
             id: None,
             name: None,
-            short_name: None,
-            tla: None,
         },
         away_team: MatchTeam {
             id: None,
             name: None,
-            short_name: None,
-            tla: None,
         },
         score: Score {
             full_time: ScoreDetail {

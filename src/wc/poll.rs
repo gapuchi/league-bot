@@ -49,7 +49,6 @@ pub async fn poll(
 
     Ok(PollOutcome {
         finished_matches: finished_matches.len(),
-        scored_matches: finished_matches.len(),
         seasons: seasons.len(),
         detail: format!("WC poll{scorers_line}"),
     })

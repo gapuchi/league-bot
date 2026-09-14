@@ -56,8 +56,6 @@ Use while implementing a new league. Copy structure, not tournament rules.
 | `src/nfl/poll.rs` | Fetch season games → `game_poll::process_game` |
 | `src/db/nfl/` | `NflMatchResult`, `NflProcessedGame` (no tie-breaker: `tiebreaker_unit` is `None`) |
 
-## NBA schema stubs
+## Schema
 
-Already in `CREATE_SCHEMA` (no Rust accessors yet):
-
-- `nba_match_results`, `nba_processed_games`, `nba_tiebreaker_picks`, `nba_player_points_totals`
+Per-league tables are added to `CREATE_SCHEMA` together with the league's accessors. `nba` exists only as a `leagues` catalog row.

@@ -1,7 +1,5 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{season::Season, team};
-
 pub struct Registration {
     pub user_id: u64,
     pub team_id: i64,
@@ -16,8 +14,6 @@ impl Registration {
         team_id: i64,
         team_name: &str,
     ) -> rusqlite::Result<()> {
-        let league_id = Season::league_id_for(conn, season_id)?;
-        team::upsert_name(conn, league_id, team_id, team_name)?;
         conn.execute(
             "
             INSERT INTO registrations (season_id, user_id, team_id, team_name)

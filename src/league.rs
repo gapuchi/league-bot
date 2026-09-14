@@ -20,7 +20,6 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct PollOutcome {
     pub finished_matches: usize,
-    pub scored_matches: usize,
     pub seasons: usize,
     pub detail: String,
 }
