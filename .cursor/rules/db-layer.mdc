@@ -10,10 +10,10 @@ Shared entities at `src/db/` root; league-specific gameplay under `src/db/<leagu
 
 - Methods take `&Connection`, return `rusqlite::Result<T>`.
 - No HTTP, Discord, or poise imports in `db/`.
-- Schema changes go in `migrate.rs` with a version bump.
+- Schema changes go in `migrate.rs` with a `SCHEMA_VERSION` bump and an `upgrade` step that brings existing databases forward (the startup path is `CREATE TABLE IF NOT EXISTS` → `upgrade(from)` → `set_version`).
 - Gameplay data is scoped by `season_id`.
-- Command focus: `GuildConfig` → `Season::default_for_guild`. Do not hardcode season ids in commands.
-- Live/polling: `seasons.polling_enabled` — independent of command focus; poller uses `Season::list_live_with_meta`.
+- Season lookup: `Season::list_live_for_guild` / `latest_for_guild_league` feed `season::resolve`. There is no per-guild default season table. Do not hardcode season ids in commands.
+- Live/polling: `seasons.polling_enabled`; poller uses `Season::list_live_with_meta`.
 
 League tables: accessors in `db/<slug>/` — e.g. `WcMatchResult`, `WcProcessedMatch`, `WcPlayerGoalTotal`, `WcTiebreakerPick`; `NflMatchResult`, `NflProcessedGame` (NFL has no tie-breaker accessors).
 

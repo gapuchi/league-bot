@@ -33,14 +33,14 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 |---------|---------|----------|
 | Registration | `commands/registration.rs` | `registration.rs` → `League` |
 | Shared standings | `commands/standings.rs` | `League::standings` → league module (format helpers in `standings.rs`) |
-| WC-only cmds | `commands/wc/` (`remaining`, `pick-player`) | `wc/` (registered via `commands_for(League)`) |
-| Config | `commands/config.rs` | inline DB (small, admin-only) |
+| WC-only cmds | `commands/wc/` (`remaining`) | `wc/` (registered via `commands_for(League)`) |
+| Season lifecycle | `commands/season.rs` | `season.rs` (`start` / `end` / `set_channel` / `list`, plus `resolve`) |
 
 New behavior: use case first → thin handler in `commands/` → `commands::all()`.
 
 ```rust
-// Adapter calls use case; use case owns API + DB + rules via League
-let message = registration::pick_for_user(ctx.data(), guild_id, user_id, &team).await?;
+// Adapter passes guild + optional league choice; use case resolves the season and owns rules
+let message = registration::claim_for_user(ctx.data(), guild_id, league, user_id, &team).await?;
 ctx.say(message).await?;
 ```
 
@@ -52,8 +52,8 @@ ctx.say(message).await?;
 |------|---------|
 | **League** | Compile-time competition type (`League` enum in `src/league.rs`, slug e.g. `wc`). Adding a league is a code change. |
 | **Season** | Runtime instance of a league for one guild (`season_id`). Created via `/season start`. |
-| **Command focus** | Guild’s `default_season_id` — which season slash commands use. |
-| **Live season** | Season with `polling_enabled` — which seasons the poller processes (independent of focus). |
+| **Live season** | Season with `polling_enabled`. At most one per league per guild (`/season start` ends the previous one). The poller processes exactly these. |
+| **Target season** | The season a command acts on: `season::resolve(conn, guild_id, league)`. Explicit `league` → that league's live season (else its newest ended one). No `league` → the guild's only live season, or a `UserError` asking which. |
 
 Catalog rows may exist in `leagues` for future slugs; only variants on `League` can have seasons (`League::supports_season` / `from_slug`).
 
@@ -61,12 +61,13 @@ Catalog rows may exist in `leagues` for future slugs; only variants on `League` 
 
 Tenancy is at **season** (`seasons.guild_id`).
 
-- Gameplay commands: `Season::default_for_guild` / `League::for_guild` — pass invoking `ctx.guild_id()`
+- Gameplay commands: every use case takes `guild_id` + `league: Option<League>` and calls `season::resolve` first. `League` derives `poise::ChoiceParameter`, so the slash option is a dropdown; it is always optional and always the last parameter.
+- There is **no per-guild default season**. Single-season guilds never see the `league` option; multi-season guilds are told to pass it.
 - Poller: `Season::list_live_with_meta()` then `League::from_slug` → `poll`
-- Setup: `/season start` creates a season for a compiled-in league; fresh guilds have none until then
-- `season_id` keys registrations, results, tie-breakers, announcements
+- Setup: `/season start <league> [name]` creates a season (slug from `season::slugify(name)`, default name `"<League> <year>"`) and ends the league's other live seasons in that guild; fresh guilds have none until then
+- `season_id` keys registrations, results, tie-breakers, announcements, draft sessions
 - Do not hardcode guild or season ids
-- `/config league` changes command focus; data per league stays separate
+- Resolution failures are `types::UserError`; poise's default `on_error` replies with its text, so use cases just `?` them
 
 ## Football-data.org soccer leagues
 
@@ -82,7 +83,7 @@ Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when 
 
 ## Key patterns
 
-- Resolve the focused season’s league with `League::for_guild` / `League::for_season`, then call enum methods (`list_teams`, `standings`, `poll`, …)
+- Resolve the target season with `season::resolve(&conn, guild_id, league)` (returns `(Season, League)`), then call enum methods (`list_teams`, `standings`, `poll`, …); `League::for_season` when you already hold a `season_id`
 - `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`, NFL uses `EspnNflApi::new(data.http.clone())`
 - User-facing sport words come from `League` (`tiebreaker_unit` is `Option` — `None` hides tie-breaker lines, `draw_label`, `finished_label`) — do not hardcode "goals"/"draw" in host formatters
 - Types from `crate::api`; soccer domain helpers from `crate::soccer`
@@ -104,7 +105,8 @@ Invoke **`/add-league`** (skill: `.cursor/skills/add-league/`). Short checklist:
 Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 
 - **Tests** — `tests/migrate.rs`, `tests/standings.rs`, `tests/api.rs`
-- **Errors** — `ApiError` in api; `types::Error` in commands
+- **Errors** — `ApiError` in api; `types::Error` in commands; `types::UserError` for messages meant for the invoking user
+- **Time** — `clock.rs` (`unix_timestamp_secs`, `civil_year_month`, `current_year`)
 - **Releases** — `Cargo.toml`; `cargo release` or `just release`
 
 ## Common tasks
@@ -112,7 +114,7 @@ Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 | Task | Where |
 |------|-------|
 | New command | Use case → `commands/` handler → `commands::all()` or `commands_for(League)` → docstring |
-| New DB table | Extend greenfield `CREATE_SCHEMA` in `migrate.rs` (no upgrade path) + `db/` or `db/<league>/` → re-export in `db/mod.rs` |
+| New DB table / column | Add to `CREATE_SCHEMA` in `migrate.rs`, bump `SCHEMA_VERSION`, and add an `upgrade` step for existing databases (`CREATE TABLE IF NOT EXISTS` never alters existing tables) + `db/` or `db/<league>/` → re-export in `db/mod.rs` |
 | New API endpoint | `api/…` + league module helpers as needed |
 | New league | **`/add-league` skill** — enum arms, league module, DB, commands |
 | New league poller | `League::poll` arm; build `GameReport`s and call `game_poll::process_game` (soccer leagues via `soccer_poll`) |
@@ -124,11 +126,11 @@ Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 - Search, filtering, or orchestration in `api/`
 - Business logic in `commands/`
 - HTTP or Discord in `db/`
-- Bypass `Season::default_for_guild()` / `League::for_guild` in gameplay commands
+- Bypass `season::resolve` in gameplay commands, or reintroduce a per-guild "current season"
 - Hard-wire `Wc*` / `Nfl*` types into shared host paths (`registration`, host `standings`, `game_poll`, `types`, `db/registration`)
 - Monolithic `db/mod.rs` with inline SQL
 - Raw `reqwest::Client` + token in host code when `FootballDataApi::from_env` exists
-- Assume command focus controls the poller (use `polling_enabled` / live seasons)
+- Let two seasons of the same league be live in one guild (they would both ingest the same games)
 
 ## Running checks
 

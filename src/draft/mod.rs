@@ -5,11 +5,13 @@ pub use order::{max_draft_picks, next_picker, teams_per_player};
 use rand::seq::SliceRandom;
 
 use crate::{
+    clock,
     db::{
         DraftOrderKind, DraftParticipant, DraftSession, DraftSessionStatus, Registration,
         RosterPhase, Season,
     },
     league::League,
+    season,
     types::{Data, Error},
 };
 
@@ -77,6 +79,7 @@ impl PickOutcome {
 pub async fn start_for_guild(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     mut user_ids: Vec<u64>,
 ) -> Result<String, Error> {
     user_ids.sort_unstable();
@@ -85,9 +88,9 @@ pub async fn start_for_guild(
         return Ok("Need at least two distinct players to start a draft.".into());
     }
 
-    let season = {
+    let (season, league) = {
         let conn = data.db.lock().await;
-        Season::default_for_guild(&conn, guild_id)?
+        season::resolve(&conn, guild_id, league)?
     };
 
     if season.roster_phase != RosterPhase::Open {
@@ -113,10 +116,6 @@ pub async fn start_for_guild(
         }
     }
 
-    let league = {
-        let conn = data.db.lock().await;
-        League::for_season(&conn, season.id)?
-    };
     let api_teams = league.list_teams(data).await?;
     let per_player = teams_per_player(api_teams.len(), user_ids.len());
     if per_player == 0 {
@@ -132,7 +131,7 @@ pub async fn start_for_guild(
         user_ids.shuffle(&mut rng);
     }
 
-    let created_at = unix_timestamp_secs();
+    let created_at = clock::unix_timestamp_secs().to_string();
     {
         let conn = data.db.lock().await;
         DraftSession::upsert(
@@ -157,12 +156,17 @@ pub async fn start_for_guild(
         .join("\n");
 
     Ok(format!(
-        "Snake draft started (order randomized). Each player will draft **{per_player}** team(s).\n\n{order_line}\n\nOn the clock: <@{on_clock}> — use `/draft pick`."
+        "{} snake draft started (order randomized). Each player will draft **{per_player}** team(s).\n\n{order_line}\n\nOn the clock: <@{on_clock}> — use `/draft pick`.",
+        season.name
     ))
 }
 
-pub async fn status_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
-    let status = load_status(data, guild_id).await?;
+pub async fn status_for_guild(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<String, Error> {
+    let status = load_status(data, guild_id, league).await?;
     let Some(status) = status else {
         return Ok("No draft for this season. An admin can `/draft start` with a list of players.".into());
     };
@@ -198,16 +202,17 @@ pub async fn status_for_guild(data: &Data, guild_id: u64) -> Result<String, Erro
 pub async fn pick_for_user(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
     team_query: &str,
 ) -> Result<PickOutcome, Error> {
     let (season_id, league, order, order_kind, player_count) = {
         let conn = data.db.lock().await;
-        let (season, league) = League::for_guild(&conn, guild_id)?;
+        let (season, league) = season::resolve(&conn, guild_id, league)?;
         if season.roster_phase != RosterPhase::Drafting {
             return Ok(PickOutcome::Notice(match season.roster_phase {
                 RosterPhase::Open => {
-                    "No active draft. An admin can `/draft start` when ready.".into()
+                    "No active draft — use `/claim` while the roster is open. An admin can `/draft start` when ready.".into()
                 }
                 RosterPhase::Frozen => {
                     "The roster is frozen after the draft. Picks are locked.".into()
@@ -278,7 +283,7 @@ pub async fn pick_for_user(
         )?;
     }
 
-    let remaining = count_unclaimed(data, guild_id, league).await?;
+    let remaining = count_unclaimed(data, season_id, league).await?;
     let picks_after = pick_index + 1;
     if picks_after >= max_picks || remaining == 0 {
         let conn = data.db.lock().await;
@@ -310,11 +315,12 @@ pub async fn pick_for_user(
 pub async fn unpick_for_user(
     data: &Data,
     guild_id: u64,
+    league: Option<League>,
     user_id: u64,
 ) -> Result<String, Error> {
-    let (season_id, order, order_kind) = {
+    let (season_id, league, order, order_kind) = {
         let conn = data.db.lock().await;
-        let (season, _league) = League::for_guild(&conn, guild_id)?;
+        let (season, league) = season::resolve(&conn, guild_id, league)?;
         if season.roster_phase != RosterPhase::Drafting {
             return Ok(match season.roster_phase {
                 RosterPhase::Open => {
@@ -332,7 +338,7 @@ pub async fn unpick_for_user(
             return Ok("This draft is already complete.".into());
         }
         let order = DraftParticipant::user_ids_ordered(&conn, season.id)?;
-        (season.id, order, session.order_kind)
+        (season.id, league, order, session.order_kind)
     };
 
     let latest = {
@@ -352,7 +358,6 @@ pub async fn unpick_for_user(
 
     {
         let conn = data.db.lock().await;
-        let league = League::for_season(&conn, season_id)?;
         league.clear_picks_for_team(&conn, season_id, latest.user_id, latest.team_id)?;
         Registration::delete(&conn, season_id, latest.user_id, latest.team_id)?;
     }
@@ -370,10 +375,14 @@ pub async fn unpick_for_user(
 }
 
 /// End an in-progress draft early and freeze the roster without drafting every team.
-pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
-    let season = {
+pub async fn freeze_for_guild(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<String, Error> {
+    let (season, _) = {
         let conn = data.db.lock().await;
-        Season::default_for_guild(&conn, guild_id)?
+        season::resolve(&conn, guild_id, league)?
     };
 
     match season.roster_phase {
@@ -403,11 +412,40 @@ pub async fn freeze_for_guild(data: &Data, guild_id: u64) -> Result<String, Erro
     Ok("Draft ended. Roster is **frozen**.".into())
 }
 
-async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, Error> {
+/// Scrap the draft: delete the session and order, clear every pick made during it, and
+/// reopen the roster.
+pub async fn cancel_for_guild(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<String, Error> {
+    let conn = data.db.lock().await;
+    let (season, league) = season::resolve(&conn, guild_id, league)?;
+    if DraftSession::get(&conn, season.id)?.is_none() {
+        return Ok("No draft to cancel. Start one with `/draft start`.".into());
+    }
+
+    for reg in Registration::list_for_season(&conn, season.id)? {
+        league.clear_picks_for_team(&conn, season.id, reg.user_id, reg.team_id)?;
+        Registration::delete(&conn, season.id, reg.user_id, reg.team_id)?;
+    }
+    DraftSession::delete(&conn, season.id)?;
+    Season::set_roster_phase(&conn, season.id, RosterPhase::Open)?;
+
+    Ok(format!(
+        "{} draft cancelled. All draft picks were cleared and the roster is **open** again.",
+        season.name
+    ))
+}
+
+async fn load_status(
+    data: &Data,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<Option<DraftStatus>, Error> {
     let (season, league, session, order) = {
         let conn = data.db.lock().await;
-        let season = Season::default_for_guild(&conn, guild_id)?;
-        let league = League::for_season(&conn, season.id)?;
+        let (season, league) = season::resolve(&conn, guild_id, league)?;
         let Some(session) = DraftSession::get(&conn, season.id)? else {
             return Ok(None);
         };
@@ -419,7 +457,7 @@ async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, 
         let conn = data.db.lock().await;
         Registration::list_for_season(&conn, season.id)?.len()
     };
-    let remaining_teams = count_unclaimed(data, guild_id, league).await?;
+    let remaining_teams = count_unclaimed(data, season.id, league).await?;
     let team_count = remaining_teams + pick_index;
     let player_count = order.len();
     let max_picks = max_draft_picks(team_count, player_count);
@@ -444,12 +482,11 @@ async fn load_status(data: &Data, guild_id: u64) -> Result<Option<DraftStatus>, 
     }))
 }
 
-async fn count_unclaimed(data: &Data, guild_id: u64, league: League) -> Result<usize, Error> {
+async fn count_unclaimed(data: &Data, season_id: i64, league: League) -> Result<usize, Error> {
     let api_teams = league.list_teams(data).await?;
     let claimed = {
         let conn = data.db.lock().await;
-        let season = Season::default_for_guild(&conn, guild_id)?;
-        Registration::list_for_season(&conn, season.id)?
+        Registration::list_for_season(&conn, season_id)?
             .into_iter()
             .map(|r| r.team_id)
             .collect::<std::collections::HashSet<_>>()
@@ -458,13 +495,4 @@ async fn count_unclaimed(data: &Data, guild_id: u64, league: League) -> Result<u
         .iter()
         .filter(|t| !claimed.contains(&t.id))
         .count())
-}
-
-fn unix_timestamp_secs() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-        .to_string()
 }

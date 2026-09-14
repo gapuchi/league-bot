@@ -1,30 +1,21 @@
 use poise::serenity_prelude as serenity;
 
 use crate::{
-    league::League,
     types::{Context, Error},
     wc::remaining::{self, RemainingResult},
 };
 
-use super::super::helpers::{ensure_focused_league, guild_id};
+use super::super::helpers::guild_id;
 
 /// List World Cup teams still in the tournament
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn remaining(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
 
-    if !ensure_focused_league(&ctx, League::Wc).await? {
-        return Ok(());
-    }
-
     let guild_id = guild_id(&ctx)?;
     match remaining::list_for_guild(ctx.data(), guild_id).await? {
-        RemainingResult::WrongLeague => {
-            ctx.say("This command is only available when the active season is World Cup. Use `/season status` to check, or `/config league` to switch.")
-                .await?;
-        }
         RemainingResult::NoRegistrations => {
-            ctx.say("No teams assigned yet. Use `/draft pick` to choose a nation.")
+            ctx.say("No teams claimed yet. Use `/claim` to choose a nation.")
                 .await?;
         }
         RemainingResult::Report(report) => {

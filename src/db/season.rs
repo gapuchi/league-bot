@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{guild_config::GuildConfig, league};
+use super::league;
 
 /// Registration / draft lifecycle for a season.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,7 @@ impl RosterPhase {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Season {
     pub id: i64,
     pub guild_id: u64,
@@ -36,29 +37,24 @@ pub struct Season {
     pub slug: String,
     pub name: String,
     pub announce_channel_id: Option<u64>,
-    /// When true, the background poller includes this season. Independent of
-    /// guild command focus (`GuildConfig.default_season_id`).
+    /// When true, the background poller includes this season.
     pub polling_enabled: bool,
     pub roster_phase: RosterPhase,
 }
 
+#[derive(Debug, Clone)]
 pub struct SeasonMeta {
     pub season: Season,
     pub league_slug: String,
     pub league_name: String,
 }
 
-pub struct SeasonLeague {
-    pub season: Season,
-    pub league_slug: String,
-    pub league_name: String,
-}
-
-pub struct SeasonDisplay {
-    pub league_name: String,
-    pub name: String,
-    pub slug: String,
-}
+const META_SELECT: &str = "
+    SELECT s.id, s.guild_id, s.league_id, s.slug, s.name, s.announce_channel_id,
+           s.polling_enabled, s.roster_phase, l.slug, l.name
+    FROM seasons s
+    JOIN leagues l ON l.id = s.league_id
+";
 
 impl Season {
     pub fn get(conn: &Connection, id: i64) -> rusqlite::Result<Option<Self>> {
@@ -70,99 +66,69 @@ impl Season {
             WHERE id = ?1
             ",
             params![id],
-            row_from,
+            season_from_row,
         )
         .optional()
     }
 
-    pub fn default_for_guild(conn: &Connection, guild_id: u64) -> rusqlite::Result<Self> {
-        let config =
-            GuildConfig::get(conn, guild_id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
-        let season = Self::get(conn, config.default_season_id)?
-            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
-        if season.guild_id != guild_id {
-            return Err(rusqlite::Error::QueryReturnedNoRows);
-        }
-        Ok(season)
+    pub fn get_meta(conn: &Connection, id: i64) -> rusqlite::Result<Option<SeasonMeta>> {
+        conn.query_row(
+            &format!("{META_SELECT} WHERE s.id = ?1"),
+            params![id],
+            meta_from_row,
+        )
+        .optional()
     }
 
     pub fn list_all_with_meta(conn: &Connection) -> rusqlite::Result<Vec<SeasonMeta>> {
-        let mut stmt = conn.prepare(
-            "
-            SELECT
-                s.id,
-                s.guild_id,
-                s.league_id,
-                s.slug,
-                s.name,
-                s.announce_channel_id,
-                s.polling_enabled,
-                s.roster_phase,
-                l.slug,
-                l.name
-            FROM seasons s
-            JOIN leagues l ON l.id = s.league_id
-            ORDER BY s.id
-            ",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(SeasonMeta {
-                season: season_from_row(row)?,
-                league_slug: row.get(8)?,
-                league_name: row.get(9)?,
-            })
-        })?;
+        let mut stmt = conn.prepare(&format!("{META_SELECT} ORDER BY s.id"))?;
+        let rows = stmt.query_map([], meta_from_row)?;
         rows.collect()
     }
 
-    /// Seasons the background poller should process (independent of command focus).
+    /// Seasons the background poller should process.
     pub fn list_live_with_meta(conn: &Connection) -> rusqlite::Result<Vec<SeasonMeta>> {
-        let mut stmt = conn.prepare(
-            "
-            SELECT
-                s.id,
-                s.guild_id,
-                s.league_id,
-                s.slug,
-                s.name,
-                s.announce_channel_id,
-                s.polling_enabled,
-                s.roster_phase,
-                l.slug,
-                l.name
-            FROM seasons s
-            JOIN leagues l ON l.id = s.league_id
-            WHERE s.polling_enabled = 1
-            ORDER BY s.id
-            ",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(SeasonMeta {
-                season: season_from_row(row)?,
-                league_slug: row.get(8)?,
-                league_name: row.get(9)?,
-            })
-        })?;
+        let mut stmt =
+            conn.prepare(&format!("{META_SELECT} WHERE s.polling_enabled = 1 ORDER BY s.id"))?;
+        let rows = stmt.query_map([], meta_from_row)?;
         rows.collect()
     }
 
-    pub fn get_for_guild_league(
+    /// Every season a guild has ever started, newest league first then newest season.
+    pub fn list_for_guild(conn: &Connection, guild_id: u64) -> rusqlite::Result<Vec<SeasonMeta>> {
+        let mut stmt = conn.prepare(&format!(
+            "{META_SELECT} WHERE s.guild_id = ?1 ORDER BY l.id, s.id DESC"
+        ))?;
+        let rows = stmt.query_map(params![guild_id as i64], meta_from_row)?;
+        rows.collect()
+    }
+
+    pub fn list_live_for_guild(
+        conn: &Connection,
+        guild_id: u64,
+    ) -> rusqlite::Result<Vec<SeasonMeta>> {
+        let mut stmt = conn.prepare(&format!(
+            "{META_SELECT} WHERE s.guild_id = ?1 AND s.polling_enabled = 1 ORDER BY l.id"
+        ))?;
+        let rows = stmt.query_map(params![guild_id as i64], meta_from_row)?;
+        rows.collect()
+    }
+
+    /// The guild's season for a league: the live one if any, otherwise the newest.
+    pub fn latest_for_guild_league(
         conn: &Connection,
         guild_id: u64,
         league_slug: &str,
-    ) -> rusqlite::Result<Option<Self>> {
+    ) -> rusqlite::Result<Option<SeasonMeta>> {
         conn.query_row(
-            "
-            SELECT s.id, s.guild_id, s.league_id, s.slug, s.name, s.announce_channel_id,
-                   s.polling_enabled, s.roster_phase
-            FROM seasons s
-            JOIN leagues l ON l.id = s.league_id
-            WHERE s.guild_id = ?1 AND l.slug = ?2
-            ORDER BY s.id DESC
-            LIMIT 1
-            ",
+            &format!(
+                "{META_SELECT}
+                 WHERE s.guild_id = ?1 AND l.slug = ?2
+                 ORDER BY s.polling_enabled DESC, s.id DESC
+                 LIMIT 1"
+            ),
             params![guild_id as i64, league_slug],
-            row_from,
+            meta_from_row,
         )
         .optional()
     }
@@ -227,30 +193,6 @@ impl Season {
         Ok(())
     }
 
-    pub fn list_with_league(
-        conn: &Connection,
-        guild_id: u64,
-    ) -> rusqlite::Result<Vec<SeasonLeague>> {
-        let mut stmt = conn.prepare(
-            "
-            SELECT s.id, s.guild_id, s.league_id, s.slug, s.name, s.announce_channel_id,
-                   s.polling_enabled, s.roster_phase, l.slug, l.name
-            FROM seasons s
-            JOIN leagues l ON l.id = s.league_id
-            WHERE s.guild_id = ?1
-            ORDER BY l.id
-            ",
-        )?;
-        let rows = stmt.query_map(params![guild_id as i64], |row| {
-            Ok(SeasonLeague {
-                season: season_from_row(row)?,
-                league_slug: row.get(8)?,
-                league_name: row.get(9)?,
-            })
-        })?;
-        rows.collect()
-    }
-
     pub fn league_slug_for(conn: &Connection, season_id: i64) -> rusqlite::Result<String> {
         conn.query_row(
             "
@@ -279,30 +221,9 @@ impl Season {
             WHERE s.guild_id = ?1 AND l.slug = ?2 AND s.slug = ?3
             ",
             params![guild_id as i64, league_slug, slug],
-            row_from,
+            season_from_row,
         )
         .optional()
-    }
-}
-
-impl SeasonDisplay {
-    pub fn for_season(conn: &Connection, season_id: i64) -> rusqlite::Result<Self> {
-        conn.query_row(
-            "
-            SELECT l.name, s.name, s.slug
-            FROM seasons s
-            JOIN leagues l ON l.id = s.league_id
-            WHERE s.id = ?1
-            ",
-            params![season_id],
-            |row| {
-                Ok(Self {
-                    league_name: row.get(0)?,
-                    name: row.get(1)?,
-                    slug: row.get(2)?,
-                })
-            },
-        )
     }
 }
 
@@ -331,6 +252,11 @@ fn season_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Season> {
     })
 }
 
-fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<Season> {
-    season_from_row(row)
+/// Season columns followed by `l.slug, l.name` (see `META_SELECT`).
+fn meta_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SeasonMeta> {
+    Ok(SeasonMeta {
+        season: season_from_row(row)?,
+        league_slug: row.get(8)?,
+        league_name: row.get(9)?,
+    })
 }

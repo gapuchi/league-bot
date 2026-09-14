@@ -1,4 +1,3 @@
-mod config;
 mod draft;
 mod helpers;
 mod meta;
@@ -8,11 +7,10 @@ mod season;
 mod standings;
 mod wc;
 
-pub use config::{config, config_channel, config_league, config_leagues};
 pub use draft::draft;
 pub use meta::{help, ping, register, version};
 pub use pick_player::pick_player;
-pub use registration::{assign, my_team, teams, unclaim, undrafted};
+pub use registration::{assign, claim, my_team, teams, unclaim, undrafted};
 pub use season::season;
 pub use standings::standings;
 pub use wc::remaining;
@@ -25,15 +23,15 @@ pub fn all() -> Vec<poise::Command<crate::types::Data, crate::types::Error>> {
         version(),
         help(),
         register(),
-        config(),
+        season(),
         draft(),
+        claim(),
         assign(),
         unclaim(),
         my_team(),
         teams(),
         undrafted(),
         standings(),
-        season(),
         pick_player(),
     ];
     for league in League::ALL {
@@ -48,7 +46,6 @@ fn commands_for(
 ) -> Vec<poise::Command<crate::types::Data, crate::types::Error>> {
     match league {
         League::Wc => vec![remaining()],
-        League::Epl => vec![],
-        League::Nfl => vec![],
+        League::Epl | League::Nfl => vec![],
     }
 }

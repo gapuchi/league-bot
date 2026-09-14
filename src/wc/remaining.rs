@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use crate::{
-    db::{league_competition_code, Registration, Season},
+    db::{Registration, league_competition_code},
+    league::League,
+    season,
     soccer::{self, TeamClassification, TeamRef},
     types::{Data, Error},
 };
 
 pub enum RemainingResult {
-    WrongLeague,
     NoRegistrations,
     Report(RemainingReport),
 }
@@ -18,15 +19,11 @@ pub struct RemainingReport {
 }
 
 pub async fn list_for_guild(data: &Data, guild_id: u64) -> Result<RemainingResult, Error> {
-    let (competition, season_id) = {
+    let season_id = {
         let conn = data.db.lock().await;
-        let season = Season::default_for_guild(&conn, guild_id)?;
-        let league_slug = Season::league_slug_for(&conn, season.id)?;
-        if league_slug != "wc" {
-            return Ok(RemainingResult::WrongLeague);
-        }
-        (league_competition_code(&league_slug), season.id)
+        season::resolve(&conn, guild_id, Some(League::Wc))?.0.id
     };
+    let competition = league_competition_code(League::Wc.slug());
 
     let api = crate::api::FootballDataApi::from_env(data.http.clone());
     let teams = api.fetch_teams(&competition).await?;

@@ -1,5 +1,6 @@
 use crate::{
     league::League,
+    season,
     types::{Context, Error},
 };
 
@@ -10,17 +11,18 @@ use super::helpers::guild_id;
 pub async fn pick_player(
     ctx: Context<'_>,
     #[description = "Player name from one of your claimed teams (e.g. Salah)"] player: String,
+    #[description = "League (optional when only one season is live)"] league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
     let guild_id = guild_id(&ctx)?;
-    let league = {
+    let (season, league) = {
         let conn = ctx.data().db.lock().await;
-        League::for_guild(&conn, guild_id)?.1
+        season::resolve(&conn, guild_id, league)?
     };
 
     let message = league
-        .pick_tiebreaker_player(ctx.data(), guild_id, ctx.author().id.get(), &player)
+        .pick_tiebreaker_player(ctx.data(), season.id, ctx.author().id.get(), &player)
         .await?;
 
     ctx.say(message).await?;

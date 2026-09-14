@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use league_bot::db::{self, GuildConfig, Season, SCHEMA_VERSION};
+use league_bot::db::{self, Season, SCHEMA_VERSION};
 
 #[test]
 fn fresh_init_seeds_catalog_without_seasons() {
@@ -11,7 +11,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 3);
+    assert_eq!(SCHEMA_VERSION, 4);
 
     let leagues: i64 = conn
         .query_row("SELECT COUNT(*) FROM leagues", [], |row| row.get(0))
@@ -22,11 +22,6 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT COUNT(*) FROM seasons", [], |row| row.get(0))
         .unwrap();
     assert_eq!(seasons, 0);
-
-    let guild_configs: i64 = conn
-        .query_row("SELECT COUNT(*) FROM guild_config", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(guild_configs, 0);
 
     let league_tables: i64 = conn
         .query_row(
@@ -58,7 +53,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
             SELECT COUNT(*)
             FROM sqlite_master
             WHERE type = 'table'
-              AND (name LIKE 'nba_%' OR name = 'teams' OR name = 'nfl_tiebreaker_picks')
+              AND (name LIKE 'nba_%' OR name IN ('teams', 'guild_config', 'nfl_tiebreaker_picks'))
             ",
             [],
             |row| row.get(0),
@@ -196,6 +191,48 @@ fn upgrade_from_v2_drops_dead_tables_and_columns_but_keeps_data() {
 }
 
 #[test]
+fn upgrade_from_v3_drops_guild_config_and_keeps_one_live_season_per_league() {
+    let conn = Connection::open_in_memory().unwrap();
+
+    conn.execute_batch(
+        "
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (3);
+        CREATE TABLE leagues (id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, sport TEXT NOT NULL);
+        INSERT INTO leagues (id, slug, name, sport) VALUES (1, 'wc', 'FIFA World Cup', 'soccer'), (3, 'nfl', 'NFL', 'football');
+        CREATE TABLE seasons (
+            id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, league_id INTEGER NOT NULL REFERENCES leagues(id),
+            slug TEXT NOT NULL, name TEXT NOT NULL, announce_channel_id INTEGER,
+            polling_enabled INTEGER NOT NULL DEFAULT 1, roster_phase TEXT NOT NULL DEFAULT 'open',
+            UNIQUE (guild_id, league_id, slug)
+        );
+        INSERT INTO seasons (id, guild_id, league_id, slug, name) VALUES
+            (1, 111, 3, 'nfl-2025', 'NFL 2025'),
+            (2, 111, 3, 'nfl-2026', 'NFL 2026'),
+            (3, 111, 1, 'wc-2026', 'World Cup 2026'),
+            (4, 222, 3, 'nfl-2025', 'NFL 2025');
+        CREATE TABLE guild_config (guild_id INTEGER PRIMARY KEY, default_season_id INTEGER NOT NULL REFERENCES seasons(id));
+        INSERT INTO guild_config VALUES (111, 1);
+        ",
+    )
+    .unwrap();
+
+    db::init(&conn).unwrap();
+
+    assert!(!table_exists(&conn, "guild_config"));
+
+    let live: Vec<i64> = Season::list_live_with_meta(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|meta| meta.season.id)
+        .collect();
+    // Guild 111 keeps its newest NFL season and its WC season; guild 222 is untouched.
+    assert_eq!(live, vec![2, 3, 4]);
+    assert_eq!(Season::list_all_with_meta(&conn).unwrap().len(), 4);
+    assert!(!Season::get(&conn, 1).unwrap().unwrap().polling_enabled);
+}
+
+#[test]
 fn init_is_idempotent() {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();
@@ -224,15 +261,20 @@ fn get_or_create_scopes_by_guild() {
     assert_eq!(season_a.guild_id, guild_a);
     assert_eq!(season_b.guild_id, guild_b);
 
-    GuildConfig::set_default_season_id(&conn, guild_a, season_a.id).unwrap();
-    GuildConfig::set_default_season_id(&conn, guild_b, season_b.id).unwrap();
-
     assert_eq!(
-        Season::default_for_guild(&conn, guild_a).unwrap().id,
+        Season::latest_for_guild_league(&conn, guild_a, "wc")
+            .unwrap()
+            .unwrap()
+            .season
+            .id,
         season_a.id
     );
     assert_eq!(
-        Season::default_for_guild(&conn, guild_b).unwrap().id,
+        Season::latest_for_guild_league(&conn, guild_b, "wc")
+            .unwrap()
+            .unwrap()
+            .season
+            .id,
         season_b.id
     );
 }
@@ -286,12 +328,14 @@ fn new_seasons_are_live_by_default_and_list_live_filters() {
     assert!(all_ids.contains(&live.id));
     assert!(all_ids.contains(&idle.id));
 
-    // Command focus on the idle season must not change the live poller set.
-    GuildConfig::set_default_season_id(&conn, 222, idle.id).unwrap();
-    let live_ids_after_focus: Vec<i64> = Season::list_live_with_meta(&conn)
-        .unwrap()
-        .into_iter()
-        .map(|meta| meta.season.id)
-        .collect();
-    assert_eq!(live_ids_after_focus, vec![live.id]);
+    assert!(Season::list_live_for_guild(&conn, 222).unwrap().is_empty());
+    // An ended season is still reachable by league so its standings remain viewable.
+    assert_eq!(
+        Season::latest_for_guild_league(&conn, 222, "wc")
+            .unwrap()
+            .unwrap()
+            .season
+            .id,
+        idle.id
+    );
 }

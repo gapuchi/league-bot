@@ -3,6 +3,7 @@
 
 use crate::{
     api::{NflCompetitor, NflGame},
+    clock::{civil_year_month, unix_timestamp_secs},
     game_poll::GameReport,
 };
 
@@ -21,7 +22,7 @@ pub fn season_year_at(unix_secs: u64) -> i64 {
 }
 
 pub fn current_season_year() -> i64 {
-    season_year_at(crate::game_poll::unix_timestamp_secs())
+    season_year_at(unix_timestamp_secs())
 }
 
 /// `YYYYMMDD` bounds wide enough to cover preseason through the Super Bowl.
@@ -30,20 +31,6 @@ pub fn scoreboard_range(season_year: i64) -> (String, String) {
         format!("{season_year}0801"),
         format!("{}0301", season_year + 1),
     )
-}
-
-/// Days-to-civil conversion (Howard Hinnant's algorithm); returns `(year, month)`.
-fn civil_year_month(unix_secs: u64) -> (i64, i64) {
-    let days = (unix_secs / 86_400) as i64;
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    (year, month)
 }
 
 /// Regular-season and playoff games only — no preseason, no Pro Bowl.

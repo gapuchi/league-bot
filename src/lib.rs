@@ -1,4 +1,5 @@
 pub mod api;
+pub mod clock;
 pub mod soccer;
 pub mod commands;
 pub mod db;

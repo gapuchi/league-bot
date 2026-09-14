@@ -10,5 +10,6 @@ alwaysApply: true
 Quick guardrails (details and examples in `AGENTS.md`):
 
 - Layers: `api` → league modules / `soccer` → `db` → host use cases → `commands`
-- Dispatch via `League` enum methods; `Season::default_for_guild()` / `League::for_guild` in gameplay commands
-- Poller uses live seasons (`polling_enabled`), not command focus
+- Dispatch via `League` enum methods; `season::resolve(conn, guild_id, league)` picks the target season in gameplay use cases
+- No per-guild default season: commands take an optional `league` choice, inferred only when one season is live
+- Poller uses live seasons (`polling_enabled`); one live season per league per guild

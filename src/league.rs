@@ -29,10 +29,19 @@ pub struct PollOutcome {
 /// Adding a league is a code change: new variant, league module, and `match` arms.
 /// Runtime guild setup creates **seasons** for a compiled-in league; it does not
 /// register new leagues.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// Doubles as the `league` slash-command choice: the first `#[name]` is what Discord
+/// shows, the second lets prefix commands and docs use the slug.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, poise::ChoiceParameter)]
 pub enum League {
+    #[name = "World Cup"]
+    #[name = "wc"]
     Wc,
+    #[name = "Premier League"]
+    #[name = "epl"]
     Epl,
+    #[name = "NFL"]
+    #[name = "nfl"]
     Nfl,
 }
 
@@ -128,12 +137,6 @@ impl League {
             format!("season {season_id} uses league \"{slug}\" which is not compiled into this bot")
                 .into()
         })
-    }
-
-    pub fn for_guild(conn: &Connection, guild_id: u64) -> Result<(Season, Self), Error> {
-        let season = Season::default_for_guild(conn, guild_id)?;
-        let league = Self::for_season(conn, season.id)?;
-        Ok((season, league))
     }
 
     pub async fn list_teams(self, data: &Data) -> Result<Vec<CatalogTeam>, Error> {
@@ -323,14 +326,14 @@ impl League {
     pub async fn pick_tiebreaker_player(
         self,
         data: &Data,
-        guild_id: u64,
+        season_id: i64,
         user_id: u64,
         player: &str,
     ) -> Result<String, Error> {
         if self.tiebreaker_unit().is_none() {
             return Ok(self.no_tiebreaker_message());
         }
-        let teams = tiebreaker::claimed_teams(data, guild_id, user_id).await?;
+        let teams = tiebreaker::claimed_teams(data, season_id, user_id).await?;
         if teams.is_empty() {
             return Ok(tiebreaker::NO_TEAMS_MESSAGE.into());
         }
@@ -338,7 +341,7 @@ impl League {
             return Ok(self.no_tiebreaker_message());
         };
 
-        tiebreaker::resolve_pick(data, guild_id, user_id, player, &players, |conn,
+        tiebreaker::resolve_pick(data, season_id, user_id, player, &players, |conn,
                                                                               season_id,
                                                                               user_id,
                                                                               selected| {
