@@ -9,6 +9,8 @@ use crate::{
 
 pub const REGULAR_SEASON: i64 = 2;
 pub const POSTSEASON: i64 = 3;
+/// ESPN's Play-In Tournament sits between the regular season and the playoffs.
+pub const PLAY_IN: i64 = 5;
 
 /// NBA seasons are named for the year they tip off in October; the playoffs run into
 /// the following June. The offseason (July–September) is the boundary.
@@ -21,17 +23,23 @@ pub fn current_season_year() -> i64 {
     season_year_at(unix_timestamp_secs())
 }
 
-/// `YYYYMMDD` bounds wide enough to cover preseason through the NBA Finals.
-pub fn scoreboard_range(season_year: i64) -> (String, String) {
-    (
-        format!("{season_year}1001"),
-        format!("{}0801", season_year + 1),
-    )
+/// Calendar months (`YYYYMM`) covering tip-off through the Finals. ESPN's scoreboard
+/// rejects day ranges and caps a year query at 1000 events, so the poller fetches one
+/// month at a time.
+pub fn scoreboard_months(season_year: i64) -> Vec<String> {
+    let mut months = Vec::with_capacity(9);
+    for month in 10..=12 {
+        months.push(format!("{season_year}{month:02}"));
+    }
+    for month in 1..=6 {
+        months.push(format!("{}{month:02}", season_year + 1));
+    }
+    months
 }
 
-/// Regular-season and playoff games only — no preseason, no All-Star Game.
+/// Regular-season, Play-In, and playoff games — no preseason, no All-Star Game.
 pub fn counts_for_pool(game: &NbaGame) -> bool {
-    matches!(game.season_type, REGULAR_SEASON | POSTSEASON)
+    matches!(game.season_type, REGULAR_SEASON | POSTSEASON | PLAY_IN)
 }
 
 fn side<'a>(game: &'a NbaGame, home_away: &str) -> Option<&'a NbaCompetitor> {
@@ -43,6 +51,7 @@ fn side<'a>(game: &'a NbaGame, home_away: &str) -> Option<&'a NbaCompetitor> {
 pub fn round_title(game: &NbaGame) -> String {
     match game.season_type {
         POSTSEASON => "Playoffs".into(),
+        PLAY_IN => "Play-In".into(),
         _ => "Regular Season".into(),
     }
 }
@@ -109,8 +118,11 @@ mod tests {
         // 2026-08-01T00:00Z rolls over into the 2026 season.
         assert_eq!(season_year_at(1_785_542_400), 2026);
         assert_eq!(
-            scoreboard_range(2025),
-            ("20251001".into(), "20260801".into())
+            scoreboard_months(2025),
+            vec![
+                "202510", "202511", "202512", "202601", "202602", "202603", "202604", "202605",
+                "202606",
+            ]
         );
     }
 
@@ -126,6 +138,10 @@ mod tests {
         let playoff = game_report(&game(POSTSEASON, true)).unwrap();
         assert!(playoff.playoff);
         assert_eq!(playoff.title, "Playoffs");
+
+        let play_in = game_report(&game(PLAY_IN, true)).unwrap();
+        assert!(!play_in.playoff);
+        assert_eq!(play_in.title, "Play-In");
 
         assert!(game_report(&game(REGULAR_SEASON, false)).is_none());
         assert!(game_report(&game(1, true)).is_none());

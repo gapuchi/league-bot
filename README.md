@@ -111,7 +111,7 @@ The background poller fetches finished games from ESPN's public NFL API (no API 
 
 Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Lakers`, `LAL`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
 
-**Scoring** — regular-season win 1, loss 0 per game; a playoff (postseason) win is worth 3. Regular-season and playoff games count; preseason and the All-Star Game do not. Basketball games never end level, so there is no tie score.
+**Scoring** — regular-season win 1, loss 0 per game; a playoff (postseason) win is worth 3. Regular-season, Play-In, and playoff games count; preseason and the All-Star Game do not. Play-In wins use regular-season scoring. Basketball games never end level, so there is no tie score.
 
 **Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NBA seasons.
 

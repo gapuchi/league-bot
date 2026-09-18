@@ -77,7 +77,7 @@ When adding behavior: does every league get this? Yes → `game_poll` / `standin
 
 ## NFL and NBA (ESPN)
 
-`src/nfl/` and `src/nba/` own the ESPN mapping: `season` (calendar-year rollover + `YYYYMMDD` scoreboard range, `GameReport` from a provider game, exhibition games excluded), `teams`, `poll`. Both have **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none. `EspnNflApi` / `EspnNbaApi` need no token but must send a `User-Agent` (see `api/espn.rs` / `api/espn_nba.rs`).
+`src/nfl/` and `src/nba/` own the ESPN mapping: `season` (calendar-year rollover + scoreboard fetch, `GameReport` from a provider game, exhibition games excluded), `teams`, `poll`. NBA fetches month-by-month (`YYYYMM`) because ESPN rejects day ranges and caps year queries at 1000 events. Both have **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none. `EspnNflApi` / `EspnNbaApi` need no token but must send a `User-Agent` (see `api/espn.rs` / `api/espn_nba.rs`).
 
 Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
 

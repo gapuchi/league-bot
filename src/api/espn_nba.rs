@@ -128,22 +128,22 @@ impl EspnNbaApi {
             .collect())
     }
 
-    /// Games between two `YYYYMMDD` dates (inclusive), every season type.
-    pub async fn fetch_games_between(
+    /// Games in the given `YYYYMM` calendar months (inclusive of every day). ESPN's
+    /// scoreboard rejects day ranges and caps a year query at 1000 events, so callers
+    /// walk a season month by month.
+    pub async fn fetch_games_for_months(
         &self,
-        start: &str,
-        end: &str,
+        months: &[String],
     ) -> Result<Vec<NbaGame>, ApiError> {
-        let response = self
-            .get(format!(
-                "{SITE_BASE_URL}/scoreboard?dates={start}-{end}&limit={PAGE_LIMIT}"
-            ))
-            .await?;
-        let body: ScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
-        Ok(body
-            .events
-            .into_iter()
-            .filter_map(|event| {
+        let mut games = Vec::new();
+        for month in months {
+            let response = self
+                .get(format!(
+                    "{SITE_BASE_URL}/scoreboard?dates={month}&limit={PAGE_LIMIT}"
+                ))
+                .await?;
+            let body: ScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
+            games.extend(body.events.into_iter().filter_map(|event| {
                 let competition = event.competitions.into_iter().next()?;
                 Some(NbaGame {
                     id: event.id,
@@ -151,8 +151,9 @@ impl EspnNbaApi {
                     completed: competition.status.status_type.completed,
                     competitors: competition.competitors,
                 })
-            })
-            .collect())
+            }));
+        }
+        Ok(games)
     }
 }
 
