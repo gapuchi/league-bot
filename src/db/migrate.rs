@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension};
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const WC_LEAGUE_SLUG: &str = "wc";
 pub const NBA_LEAGUE_SLUG: &str = "nba";
 pub const NFL_LEAGUE_SLUG: &str = "nfl";
@@ -114,6 +114,23 @@ CREATE TABLE IF NOT EXISTS nfl_processed_games (
     PRIMARY KEY (season_id, game_id)
 );
 
+CREATE TABLE IF NOT EXISTS nba_match_results (
+    season_id               INTEGER NOT NULL REFERENCES seasons(id),
+    game_id                 INTEGER NOT NULL,
+    home_team_id            INTEGER NOT NULL,
+    away_team_id            INTEGER NOT NULL,
+    home_score              INTEGER NOT NULL,
+    away_score              INTEGER NOT NULL,
+    postseason              INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (season_id, game_id)
+);
+
+CREATE TABLE IF NOT EXISTS nba_processed_games (
+    season_id               INTEGER NOT NULL REFERENCES seasons(id),
+    game_id                 INTEGER NOT NULL,
+    PRIMARY KEY (season_id, game_id)
+);
+
 CREATE TABLE IF NOT EXISTS epl_match_results (
     season_id               INTEGER NOT NULL REFERENCES seasons(id),
     match_id                INTEGER NOT NULL,
@@ -205,6 +222,29 @@ fn upgrade(conn: &Connection, from: i64) -> rusqlite::Result<()> {
                   SELECT MAX(id) FROM seasons WHERE polling_enabled = 1
                   GROUP BY guild_id, league_id
               );
+            ",
+        )?;
+    }
+    if from < 5 {
+        // NBA became a compiled-in league; recreate its result tables for databases that
+        // passed through the v3 drop of the old catalog-only stubs.
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS nba_match_results (
+                season_id               INTEGER NOT NULL REFERENCES seasons(id),
+                game_id                 INTEGER NOT NULL,
+                home_team_id            INTEGER NOT NULL,
+                away_team_id            INTEGER NOT NULL,
+                home_score              INTEGER NOT NULL,
+                away_score              INTEGER NOT NULL,
+                postseason              INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (season_id, game_id)
+            );
+            CREATE TABLE IF NOT EXISTS nba_processed_games (
+                season_id               INTEGER NOT NULL REFERENCES seasons(id),
+                game_id                 INTEGER NOT NULL,
+                PRIMARY KEY (season_id, game_id)
+            );
             ",
         )?;
     }

@@ -1,17 +1,17 @@
-//! ESPN public NFL endpoints (no API key). Ids arrive as JSON strings and are
-//! parsed to `i64` here so downstream code sees the same shape as other providers.
+//! ESPN public NBA endpoints (no API key). Shares the string→id plumbing and crawler
+//! `User-Agent` with the NFL client in `espn.rs`; the JSON shapes match ESPN's site API.
 
 use serde::Deserialize;
 
 use super::{ApiError, ESPN_USER_AGENT, check_response, opt_string_i64, string_i64};
 
-const SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
+const SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 /// Large enough to return a whole season of games in one page.
 const PAGE_LIMIT: u32 = 1000;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NflTeam {
+pub struct NbaTeam {
     #[serde(deserialize_with = "string_i64")]
     pub id: i64,
     pub display_name: String,
@@ -21,22 +21,21 @@ pub struct NflTeam {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NflCompetitor {
+pub struct NbaCompetitor {
     pub home_away: String,
     #[serde(default, deserialize_with = "opt_string_i64")]
     pub score: Option<i64>,
-    pub team: NflTeam,
+    pub team: NbaTeam,
 }
 
-/// One scheduled or finished NFL game. `season_type` is ESPN's numbering:
+/// One scheduled or finished NBA game. `season_type` is ESPN's numbering:
 /// 1 preseason, 2 regular season, 3 postseason.
 #[derive(Debug, Clone)]
-pub struct NflGame {
+pub struct NbaGame {
     pub id: i64,
     pub season_type: i64,
-    pub week: Option<i64>,
     pub completed: bool,
-    pub competitors: Vec<NflCompetitor>,
+    pub competitors: Vec<NbaCompetitor>,
 }
 
 #[derive(Deserialize)]
@@ -56,7 +55,7 @@ struct TeamsLeague {
 
 #[derive(Deserialize)]
 struct TeamEntry {
-    team: NflTeam,
+    team: NbaTeam,
 }
 
 #[derive(Deserialize)]
@@ -70,7 +69,6 @@ struct Event {
     #[serde(deserialize_with = "string_i64")]
     id: i64,
     season: EventSeason,
-    week: Option<EventWeek>,
     competitions: Vec<Competition>,
 }
 
@@ -81,13 +79,8 @@ struct EventSeason {
 }
 
 #[derive(Deserialize)]
-struct EventWeek {
-    number: i64,
-}
-
-#[derive(Deserialize)]
 struct Competition {
-    competitors: Vec<NflCompetitor>,
+    competitors: Vec<NbaCompetitor>,
     status: CompetitionStatus,
 }
 
@@ -103,11 +96,11 @@ struct StatusType {
 }
 
 #[derive(Clone)]
-pub struct EspnNflApi {
+pub struct EspnNbaApi {
     client: reqwest::Client,
 }
 
-impl EspnNflApi {
+impl EspnNbaApi {
     pub fn new(client: reqwest::Client) -> Self {
         Self { client }
     }
@@ -123,7 +116,7 @@ impl EspnNflApi {
         check_response(response)
     }
 
-    pub async fn fetch_teams(&self) -> Result<Vec<NflTeam>, ApiError> {
+    pub async fn fetch_teams(&self) -> Result<Vec<NbaTeam>, ApiError> {
         let response = self.get(format!("{SITE_BASE_URL}/teams")).await?;
         let body: TeamsResponse = response.json().await.map_err(ApiError::Request)?;
         Ok(body
@@ -140,7 +133,7 @@ impl EspnNflApi {
         &self,
         start: &str,
         end: &str,
-    ) -> Result<Vec<NflGame>, ApiError> {
+    ) -> Result<Vec<NbaGame>, ApiError> {
         let response = self
             .get(format!(
                 "{SITE_BASE_URL}/scoreboard?dates={start}-{end}&limit={PAGE_LIMIT}"
@@ -152,10 +145,9 @@ impl EspnNflApi {
             .into_iter()
             .filter_map(|event| {
                 let competition = event.competitions.into_iter().next()?;
-                Some(NflGame {
+                Some(NbaGame {
                     id: event.id,
                     season_type: event.season.season_type,
-                    week: event.week.map(|week| week.number),
                     completed: competition.status.status_type.completed,
                     competitors: competition.competitors,
                 })
@@ -170,18 +162,18 @@ mod tests {
 
     #[test]
     fn competitor_score_accepts_string_or_missing() {
-        let with_score: NflCompetitor = serde_json::from_str(
-            r#"{"homeAway":"home","score":"24","team":{"id":"21","displayName":"Philadelphia Eagles"}}"#,
+        let with_score: NbaCompetitor = serde_json::from_str(
+            r#"{"homeAway":"home","score":"118","team":{"id":"13","displayName":"Los Angeles Lakers"}}"#,
         )
         .unwrap();
-        assert_eq!(with_score.score, Some(24));
-        assert_eq!(with_score.team.id, 21);
+        assert_eq!(with_score.score, Some(118));
+        assert_eq!(with_score.team.id, 13);
 
-        let without_score: NflCompetitor = serde_json::from_str(
-            r#"{"homeAway":"away","team":{"id":6,"displayName":"Dallas Cowboys"}}"#,
+        let without_score: NbaCompetitor = serde_json::from_str(
+            r#"{"homeAway":"away","team":{"id":2,"displayName":"Boston Celtics"}}"#,
         )
         .unwrap();
         assert_eq!(without_score.score, None);
-        assert_eq!(without_score.team.id, 6);
+        assert_eq!(without_score.team.id, 2);
     }
 }

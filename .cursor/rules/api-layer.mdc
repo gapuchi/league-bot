@@ -1,23 +1,23 @@
 ---
 description: Upstream API clients (football-data.org, ESPN) and domain layer conventions
-globs: src/api/**,src/soccer.rs,src/nfl/season.rs
+globs: src/api/**,src/soccer.rs,src/nfl/season.rs,src/nba/season.rs
 alwaysApply: false
 ---
 
 # API layer
 
-`src/api/football_data.rs` wraps football-data.org; `src/api/espn.rs` wraps ESPN's public NFL endpoints. `ApiError` + rate-limit handling are shared in `src/api/mod.rs`.
+`src/api/football_data.rs` wraps football-data.org; `src/api/espn.rs` / `src/api/espn_nba.rs` wrap ESPN's public NFL and NBA endpoints. `ApiError` + rate-limit handling and ESPN string→id helpers are shared in `src/api/mod.rs`.
 
 **Belongs in `api/`:**
-- Client methods that map 1:1 to endpoints (`FootballDataApi`, `EspnNflApi`)
-- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`; `NflTeam`, `NflGame`) and the string→id plumbing ESPN needs
-- Shared client construction (`FootballDataApi::from_env`, `EspnNflApi::new` with its required `User-Agent`)
+- Client methods that map 1:1 to endpoints (`FootballDataApi`, `EspnNflApi`, `EspnNbaApi`)
+- Serde structs matching API JSON (`Team`, `Match`, `SquadPlayer`, `Scorer`; `NflTeam`/`NflGame`; `NbaTeam`/`NbaGame`) and the string→id plumbing ESPN needs
+- Shared client construction (`FootballDataApi::from_env`, `EspnNflApi` / `EspnNbaApi` with the shared ESPN `User-Agent`)
 
 **Belongs in domain modules (not `api/`):**
 - `soccer.rs`: `fetch_squads_for_teams` (multi-call orchestration + role filter), `full_time_score`, team classification helpers
-- `nfl/season.rs`: season-year rollover, scoreboard date range, `game_report` (completed + pool-eligible + scored), round titles
+- `nfl/season.rs` / `nba/season.rs`: season-year rollover, scoreboard date range, `game_report` (completed + pool-eligible + scored), round titles
 - `tiebreaker.rs`: `RosterPlayer`, `find_players` (sport-agnostic)
 
 Team name lookup for registration uses `League::find_team` on `CatalogTeam`.
 
-Soccer league modules construct the client with `FootballDataApi::from_env(data.http.clone())`; NFL uses `EspnNflApi::new(data.http.clone())`.
+Soccer league modules construct the client with `FootballDataApi::from_env(data.http.clone())`; NFL/NBA use `EspnNflApi` / `EspnNbaApi` with `data.http.clone()`.

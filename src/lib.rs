@@ -15,5 +15,6 @@ pub mod standings;
 pub mod tiebreaker;
 pub mod types;
 pub mod epl;
+pub mod nba;
 pub mod nfl;
 pub mod wc;
