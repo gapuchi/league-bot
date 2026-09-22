@@ -15,6 +15,7 @@ const RATE_LIMIT_MESSAGE: &str =
 #[derive(Debug)]
 pub enum ApiError {
     RateLimited,
+    MissingToken(&'static str),
     Request(reqwest::Error),
 }
 
@@ -22,6 +23,9 @@ impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ApiError::RateLimited => write!(f, "{RATE_LIMIT_MESSAGE}"),
+            ApiError::MissingToken(var) => {
+                write!(f, "{var} is not set; this action needs that API token")
+            }
             ApiError::Request(error) => write!(f, "{error}"),
         }
     }
@@ -30,7 +34,7 @@ impl fmt::Display for ApiError {
 impl std::error::Error for ApiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ApiError::RateLimited => None,
+            ApiError::RateLimited | ApiError::MissingToken(_) => None,
             ApiError::Request(error) => Some(error),
         }
     }

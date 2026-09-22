@@ -97,7 +97,7 @@ fn commands_for(league: League) -> Vec<...> {
 ### 5. Env + startup
 
 - Document in `.env.example` and `README.md` (readme-sync).
-- Fail-fast in `main` only if this league is compiled in and the token is required at boot (same pattern as `FOOTBALL_DATA_API_TOKEN` for wc). Keyless providers (ESPN for NFL) add nothing here.
+- Read the token lazily where it is used (like `FootballDataApi::from_env` returning `Result`), so a missing token errors only when a command or poll for that league runs — not at boot. Keyless providers (ESPN for NFL) add nothing here.
 
 ### 6. Docs
 

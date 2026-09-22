@@ -14,9 +14,6 @@ async fn main() {
 
     let token =
         std::env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
-    // Fail fast while soccer league modules are compiled in.
-    let _football_data_api_token = std::env::var("FOOTBALL_DATA_API_TOKEN")
-        .expect("Expected FOOTBALL_DATA_API_TOKEN in the environment");
 
     let db_path = database_path();
     let conn = Connection::open(&db_path).unwrap_or_else(|error| {

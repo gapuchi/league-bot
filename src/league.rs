@@ -143,7 +143,7 @@ impl League {
         match self {
             Self::Wc | Self::Epl => {
                 let competition = crate::db::league_competition_code(self.slug());
-                let teams = crate::api::FootballDataApi::from_env(data.http.clone())
+                let teams = crate::api::FootballDataApi::from_env(data.http.clone())?
                     .fetch_teams(&competition)
                     .await?;
                 Ok(teams.into_iter().map(CatalogTeam::from_api).collect())
@@ -316,7 +316,7 @@ impl League {
     ) -> Result<Option<Vec<RosterPlayer>>, Error> {
         match self {
             Self::Wc | Self::Epl => {
-                let api = crate::api::FootballDataApi::from_env(data.http.clone());
+                let api = crate::api::FootballDataApi::from_env(data.http.clone())?;
                 Ok(Some(crate::soccer::fetch_squads_for_teams(&api, teams).await?))
             }
             Self::Nfl => Ok(None),

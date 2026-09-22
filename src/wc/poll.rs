@@ -21,7 +21,7 @@ pub async fn poll(
     seasons: &[SeasonMeta],
 ) -> Result<PollOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let competition = league_competition_code("wc");
-    let api = FootballDataApi::from_env(data.http.clone());
+    let api = FootballDataApi::from_env(data.http.clone())?;
     let matches = api.fetch_competition_matches(&competition).await?;
     let teams = api.fetch_teams(&competition).await?;
     let finished_matches: Vec<&Match> =
