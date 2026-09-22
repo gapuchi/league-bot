@@ -13,7 +13,7 @@ Use while implementing a new league. Copy structure, not tournament rules.
 | `src/standings.rs` | Host-only `StandingRow` + formatting |
 | `src/commands/mod.rs` | `commands_for(League::Wc)` → remaining |
 | `src/types.rs` | `Data { db, http }` only |
-| `src/main.rs` | Fail-fast `FOOTBALL_DATA_API_TOKEN` |
+| `src/api/football_data.rs` | Lazy `FOOTBALL_DATA_API_TOKEN` via `from_env` (errors only when a soccer action needs it) |
 
 ## League module
 

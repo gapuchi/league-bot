@@ -112,14 +112,14 @@ impl FootballDataApi {
     }
 
     /// Shared football-data.org token used by soccer league modules (wc, epl).
-    pub fn from_env(client: reqwest::Client) -> Self {
-        static TOKEN: OnceLock<String> = OnceLock::new();
-        let token = TOKEN.get_or_init(|| {
-            std::env::var("FOOTBALL_DATA_API_TOKEN").expect(
-                "FOOTBALL_DATA_API_TOKEN must be set (required while soccer leagues are compiled in)",
-            )
-        });
-        Self::new(client, token.clone())
+    /// Errors only when a soccer action actually needs it, so the bot boots without it.
+    pub fn from_env(client: reqwest::Client) -> Result<Self, ApiError> {
+        static TOKEN: OnceLock<Option<String>> = OnceLock::new();
+        let token = TOKEN
+            .get_or_init(|| std::env::var("FOOTBALL_DATA_API_TOKEN").ok())
+            .clone()
+            .ok_or(ApiError::MissingToken("FOOTBALL_DATA_API_TOKEN"))?;
+        Ok(Self::new(client, token))
     }
 
     async fn get(&self, path: &str) -> Result<reqwest::Response, ApiError> {

@@ -14,7 +14,7 @@ pub async fn poll(
     seasons: &[crate::db::SeasonMeta],
 ) -> Result<PollOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let competition = league_competition_code("epl");
-    let api = FootballDataApi::from_env(data.http.clone());
+    let api = FootballDataApi::from_env(data.http.clone())?;
     let matches = api.fetch_competition_matches(&competition).await?;
     let finished_matches: Vec<&Match> =
         matches.iter().filter(|m| soccer_poll::is_finished_match(m)).collect();

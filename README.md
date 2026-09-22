@@ -30,7 +30,7 @@ Slash commands are registered automatically in each guild the bot joins on start
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DISCORD_TOKEN` | yes | Discord bot token |
-| `FOOTBALL_DATA_API_TOKEN` | yes | football-data.org API token (World Cup, Premier League) |
+| `FOOTBALL_DATA_API_TOKEN` | for soccer | football-data.org API token. Only needed for soccer leagues (World Cup, Premier League); the bot boots without it and errors only when a soccer command or poll runs. |
 | `DATABASE_PATH` | no | SQLite database path (default: `league_bot.db`) |
 
 ## Seasons
