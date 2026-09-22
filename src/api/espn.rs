@@ -68,10 +68,13 @@ pub struct NflCompetitor {
 }
 
 /// One scheduled or finished NFL game. `season_type` is ESPN's numbering:
-/// 1 preseason, 2 regular season, 3 postseason.
+/// 1 preseason, 2 regular season, 3 postseason. `season_year` is the NFL season the
+/// game belongs to, which the scoreboard reports independently of the calendar year the
+/// game is played in (postseason games spill into the following January/February).
 #[derive(Debug, Clone)]
 pub struct NflGame {
     pub id: i64,
+    pub season_year: i64,
     pub season_type: i64,
     pub week: Option<i64>,
     pub completed: bool,
@@ -115,6 +118,7 @@ struct Event {
 
 #[derive(Deserialize)]
 struct EventSeason {
+    year: i64,
     #[serde(rename = "type")]
     season_type: i64,
 }
@@ -174,15 +178,13 @@ impl EspnNflApi {
             .collect())
     }
 
-    /// Games between two `YYYYMMDD` dates (inclusive), every season type.
-    pub async fn fetch_games_between(
-        &self,
-        start: &str,
-        end: &str,
-    ) -> Result<Vec<NflGame>, ApiError> {
+    /// Every game the scoreboard lists for calendar `year`, all season types. An NFL
+    /// season is played across two calendar years, so callers combine two of these and
+    /// filter by [`NflGame::season_year`]; ESPN rejects `YYYYMMDD` date ranges with 400.
+    pub async fn fetch_games_for_year(&self, year: i64) -> Result<Vec<NflGame>, ApiError> {
         let response = self
             .get(format!(
-                "{SITE_BASE_URL}/scoreboard?dates={start}-{end}&limit={PAGE_LIMIT}"
+                "{SITE_BASE_URL}/scoreboard?dates={year}&limit={PAGE_LIMIT}"
             ))
             .await?;
         let body: ScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
@@ -193,6 +195,7 @@ impl EspnNflApi {
                 let competition = event.competitions.into_iter().next()?;
                 Some(NflGame {
                     id: event.id,
+                    season_year: event.season.year,
                     season_type: event.season.season_type,
                     week: event.week.map(|week| week.number),
                     completed: competition.status.status_type.completed,

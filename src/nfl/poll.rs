@@ -20,9 +20,15 @@ pub async fn poll(
 ) -> Result<PollOutcome, PollError> {
     let api = EspnNflApi::new(data.http.clone());
     let season_year = season::current_season_year();
-    let (start, end) = season::scoreboard_range(season_year);
-    let games = api.fetch_games_between(&start, &end).await?;
-    let reports: Vec<GameReport> = games.iter().filter_map(season::game_report).collect();
+    let mut games = Vec::new();
+    for year in season::scoreboard_years(season_year) {
+        games.extend(api.fetch_games_for_year(year).await?);
+    }
+    let reports: Vec<GameReport> = games
+        .iter()
+        .filter(|game| season::belongs_to_season(game, season_year))
+        .filter_map(season::game_report)
+        .collect();
 
     for meta in seasons {
         for report in &reports {
