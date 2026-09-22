@@ -25,12 +25,16 @@ pub fn current_season_year() -> i64 {
     season_year_at(unix_timestamp_secs())
 }
 
-/// `YYYYMMDD` bounds wide enough to cover preseason through the Super Bowl.
-pub fn scoreboard_range(season_year: i64) -> (String, String) {
-    (
-        format!("{season_year}0801"),
-        format!("{}0301", season_year + 1),
-    )
+/// Calendar years to query to cover a whole NFL season: preseason and most of the
+/// regular season fall in `season_year`, while week 18 and the playoffs run into
+/// `season_year + 1`. Games from other seasons come back too and are dropped with
+/// [`belongs_to_season`].
+pub fn scoreboard_years(season_year: i64) -> [i64; 2] {
+    [season_year, season_year + 1]
+}
+
+pub fn belongs_to_season(game: &NflGame, season_year: i64) -> bool {
+    game.season_year == season_year
 }
 
 /// Regular-season and playoff games only — no preseason, no Pro Bowl.
@@ -104,6 +108,7 @@ mod tests {
     fn game(season_type: i64, week: Option<i64>, completed: bool) -> NflGame {
         NflGame {
             id: 401,
+            season_year: 2026,
             season_type,
             week,
             completed,
@@ -123,10 +128,18 @@ mod tests {
         // 2026-02-28T23:59Z is still the 2025 season; 2026-03-01T00:00Z rolls over.
         assert_eq!(season_year_at(1_772_323_140), 2025);
         assert_eq!(season_year_at(1_772_323_200), 2026);
-        assert_eq!(
-            scoreboard_range(2026),
-            ("20260801".into(), "20270301".into())
-        );
+        assert_eq!(scoreboard_years(2026), [2026, 2027]);
+    }
+
+    #[test]
+    fn belongs_to_season_filters_other_seasons() {
+        let mut this_season = game(REGULAR_SEASON, Some(18), true);
+        this_season.season_year = 2026;
+        assert!(belongs_to_season(&this_season, 2026));
+
+        let mut prior_playoffs = game(POSTSEASON, Some(1), true);
+        prior_playoffs.season_year = 2025;
+        assert!(!belongs_to_season(&prior_playoffs, 2026));
     }
 
     #[test]
