@@ -1,4 +1,4 @@
-use league_bot::{commands, db, poller, types};
+use league_bot::{commands, db, health, poller, types};
 
 use poise::serenity_prelude as serenity;
 use rusqlite::Connection;
@@ -26,6 +26,13 @@ async fn main() {
         http: reqwest::Client::new(),
     };
 
+    let poller_health = health::PollerHealth::default();
+    health::start_health_server(
+        Arc::new(data.clone()),
+        health::health_check_addr(),
+        poller_health.clone(),
+    );
+
     let intents = serenity::GatewayIntents::GUILDS;
 
     let framework = poise::Framework::builder()
@@ -40,8 +47,10 @@ async fn main() {
         })
         .setup({
             let bot_data = data.clone();
+            let poller_health = poller_health.clone();
             move |ctx, ready, framework| {
                 let bot_data = bot_data.clone();
+                let poller_health = poller_health.clone();
                 Box::pin(async move {
                     let commands = &framework.options().commands;
                     for guild in &ready.guilds {
@@ -59,7 +68,11 @@ async fn main() {
                         }
                     }
 
-                    poller::start_poller(Arc::new(bot_data.clone()), ctx.http.clone());
+                    poller::start_poller(
+                        Arc::new(bot_data.clone()),
+                        ctx.http.clone(),
+                        poller_health.clone(),
+                    );
                     Ok(bot_data)
                 })
             }

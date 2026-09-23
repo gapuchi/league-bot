@@ -32,6 +32,11 @@ Slash commands are registered automatically in each guild the bot joins on start
 | `DISCORD_TOKEN` | yes | Discord bot token |
 | `FOOTBALL_DATA_API_TOKEN` | for soccer | football-data.org API token. Only needed for soccer leagues (World Cup, Premier League); the bot boots without it and errors only when a soccer command or poll runs. |
 | `DATABASE_PATH` | no | SQLite database path (default: `league_bot.db`) |
+| `HEALTH_CHECK_ADDR` | no | Address for the health check HTTP server (default: `0.0.0.0:8080`) |
+
+### Health check
+
+The bot runs a lightweight HTTP server for liveness/readiness probes alongside the Discord gateway. `GET /health` (also `/healthz`) returns `200` when both the database connection is serving queries and the most recent background poll succeeded; if either check fails it returns `503`. The JSON body reports each check, e.g. `{"status":"ok","database":"ok","poller":"ok"}`. Configure the bind address with `HEALTH_CHECK_ADDR` (default `0.0.0.0:8080`).
 
 ## Seasons
 

@@ -6,19 +6,24 @@ use poise::serenity_prelude as serenity;
 
 use crate::{
     db::{Season, SeasonMeta},
+    health::PollerHealth,
     league::League,
     types::Data,
 };
 
-pub fn start_poller(data: Arc<Data>, cache_http: Arc<serenity::Http>) {
+pub fn start_poller(data: Arc<Data>, cache_http: Arc<serenity::Http>, health: PollerHealth) {
     tokio::spawn(async move {
         const POLL_INTERVAL: Duration = Duration::from_secs(300);
         // Let the Discord gateway finish connecting before the first HTTP request.
         tokio::time::sleep(Duration::from_secs(5)).await;
 
         loop {
-            if let Err(error) = poll_once(&data, &cache_http).await {
-                eprintln!("Poll failed: {error:#}");
+            match poll_once(&data, &cache_http).await {
+                Ok(()) => health.mark_healthy(),
+                Err(error) => {
+                    eprintln!("Poll failed: {error:#}");
+                    health.mark_failed();
+                }
             }
             tokio::time::sleep(POLL_INTERVAL).await;
         }

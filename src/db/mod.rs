@@ -29,3 +29,8 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute("PRAGMA foreign_keys = ON", [])?;
     migrate::run(conn)
 }
+
+/// Confirms the database connection can serve queries. Used by the health check.
+pub fn ping(conn: &Connection) -> rusqlite::Result<()> {
+    conn.query_row("SELECT 1", [], |_| Ok(()))
+}
