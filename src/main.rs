@@ -1,25 +1,54 @@
-use league_bot::{commands, db, health, poller, types};
+use clap::{Parser, Subcommand};
+use league_bot::{commands, config, db, health, poller, types};
 
 use poise::serenity_prelude as serenity;
 use rusqlite::Connection;
+use std::process::ExitCode;
 use std::sync::Arc;
+
+#[derive(Parser)]
+#[command(name = "league-bot", about = "Discord sports prediction pool bot")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Prompt for tokens and save them to the config file
+    Setup,
+}
 
 fn database_path() -> String {
     std::env::var("DATABASE_PATH").unwrap_or_else(|_| "league_bot.db".into())
 }
 
-#[tokio::main]
-async fn main() {
+fn load_configuration() {
     dotenvy::dotenv().ok();
+    let path = config::config_file_path();
+    if path.exists() {
+        config::load_into_env_if_missing(&path);
+    }
+}
 
-    let token =
-        std::env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
+async fn run_bot() -> ExitCode {
+    load_configuration();
+
+    let token = match config::require_env("DISCORD_TOKEN") {
+        Ok(token) => token,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::from(1);
+        }
+    };
 
     let db_path = database_path();
     let conn = Connection::open(&db_path).unwrap_or_else(|error| {
         panic!("Failed to open database at {db_path}: {error}");
     });
-    db::init(&conn).expect("Failed to initialize database");
+    if let Err(error) = db::init(&conn) {
+        panic!("Failed to initialize database: {error}");
+    }
 
     let data = types::Data {
         db: Arc::new(tokio::sync::Mutex::new(conn)),
@@ -91,6 +120,27 @@ async fn main() {
         }
         Err(error) => {
             eprintln!("Error creating client: {error}");
+        }
+    }
+
+    ExitCode::SUCCESS
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    match cli.command {
+        None => run_bot().await,
+        Some(Command::Setup) => {
+            dotenvy::dotenv().ok();
+            match config::run_setup() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(1)
+                }
+            }
         }
     }
 }

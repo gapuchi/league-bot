@@ -8,7 +8,10 @@ The bot can serve **multiple Discord servers** at once, and each server can run 
 
 1. Create a [Discord application](https://discord.com/developers/applications) and bot token.
 2. Get a free API token from [football-data.org](https://www.football-data.org/client/register) (soccer leagues). NFL data comes from ESPN's public endpoints and needs no key.
-3. Copy `.env.example` to `.env` and fill in the values.
+3. Provide credentials using either:
+   - **`league-bot setup`** — prompts for tokens and saves them to a config file (see below), or
+   - **`.env`** — copy `.env.example` to `.env` and fill in the values (handy for local development), or
+   - **Environment variables** — for systemd, Docker, or Nix (recommended for servers).
 4. Invite the bot to your server. In the [Discord Developer Portal](https://discord.com/developers/applications) → **OAuth2** → **URL Generator**, select:
    - **Scopes:** `bot`, `applications.commands`
    - **Bot permissions:** View Channels, Send Messages, Embed Links, Create Public Threads, Send Messages in Threads
@@ -19,9 +22,18 @@ The bot can serve **multiple Discord servers** at once, and each server can run 
 
 ```bash
 cargo run
+# or, after building: league-bot
 ```
 
-The bot loads environment variables from `.env` via dotenvy.
+Configuration is read in this order (later sources only fill in values not already set): **process environment** → **`.env` in the current directory** → **config file** from `league-bot setup` (typically `~/.config/league-bot/config.toml` on Linux).
+
+First-time interactive setup (prompts for tokens and writes the config file):
+
+```bash
+cargo run -- setup
+```
+
+Running the bot never prompts for input. If required variables are missing, it exits with a short message.
 
 Slash commands are registered automatically in each guild the bot joins on startup. If commands don't appear, run `/register` in that server.
 

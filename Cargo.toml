@@ -6,7 +6,11 @@ publish = false
 repository = "https://github.com/gapuchi/league-bot"
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
+directories = "6"
 dotenvy = "0.15"
+rpassword = "7"
+toml = "0.8"
 poise = "0.6"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
@@ -16,3 +20,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
 serde_json = "1"
+tempfile = "3"
