@@ -11,7 +11,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 4);
+    assert_eq!(SCHEMA_VERSION, 5);
 
     let leagues: i64 = conn
         .query_row("SELECT COUNT(*) FROM leagues", [], |row| row.get(0))
@@ -32,6 +32,8 @@ fn fresh_init_seeds_catalog_without_seasons() {
               AND name IN (
                 'nfl_match_results',
                 'nfl_processed_games',
+                'nba_match_results',
+                'nba_processed_games',
                 'epl_match_results',
                 'epl_processed_matches',
                 'epl_tiebreaker_picks',
@@ -45,7 +47,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(league_tables, 9);
+    assert_eq!(league_tables, 11);
 
     let dropped_tables: i64 = conn
         .query_row(
@@ -53,7 +55,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
             SELECT COUNT(*)
             FROM sqlite_master
             WHERE type = 'table'
-              AND (name LIKE 'nba_%' OR name IN ('teams', 'guild_config', 'nfl_tiebreaker_picks'))
+              AND name IN ('teams', 'guild_config', 'nfl_tiebreaker_picks', 'nba_tiebreaker_picks', 'nba_player_points_totals')
             ",
             [],
             |row| row.get(0),
@@ -167,8 +169,11 @@ fn upgrade_from_v2_drops_dead_tables_and_columns_but_keeps_data() {
     assert_eq!(version, SCHEMA_VERSION);
 
     assert!(!table_exists(&conn, "teams"));
-    assert!(!table_exists(&conn, "nba_match_results"));
     assert!(!table_exists(&conn, "nfl_tiebreaker_picks"));
+    // The v2 catalog-only nba stub is dropped, then recreated as a real result table
+    // with the full column set once NBA becomes a compiled-in league.
+    assert!(table_exists(&conn, "nba_match_results"));
+    assert!(column_exists(&conn, "nba_match_results", "home_score"));
     assert!(!column_exists(&conn, "wc_match_results", "finished_at"));
     assert!(!column_exists(&conn, "seasons", "starts_at"));
     assert!(!column_exists(&conn, "seasons", "ends_at"));

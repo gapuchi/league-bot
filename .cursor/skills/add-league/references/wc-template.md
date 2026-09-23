@@ -46,16 +46,16 @@ Use while implementing a new league. Copy structure, not tournament rules.
 | `commands/standings.rs` | Shared surface, dispatches via `League` |
 | `commands/wc/remaining.rs` | WC-only; resolves `Some(League::Wc)` itself |
 
-## Non-soccer reference: NFL
+## Non-soccer reference: NFL / NBA
 
 | File | Role |
 |------|------|
-| `src/api/espn.rs` | `EspnNflApi` (teams, scoreboard date range) |
-| `src/nfl/season.rs` | Season-year rollover, `GameReport` from `NflGame`, preseason/Pro Bowl filter |
-| `src/nfl/teams.rs` | `CatalogTeam` list |
-| `src/nfl/poll.rs` | Fetch season games → `game_poll::process_game` |
-| `src/db/nfl/` | `NflMatchResult`, `NflProcessedGame` (no tie-breaker: `tiebreaker_unit` is `None`) |
+| `src/api/espn.rs` / `src/api/espn_nba.rs` | `EspnNflApi` / `EspnNbaApi` (teams, scoreboard date range) |
+| `src/nfl/season.rs` / `src/nba/season.rs` | Season-year rollover, `GameReport` from provider game, exhibition filter |
+| `src/*/teams.rs` | `CatalogTeam` list |
+| `src/*/poll.rs` | Fetch season games → `game_poll::process_game` |
+| `src/db/nfl/` / `src/db/nba/` | `*MatchResult`, `*ProcessedGame` (no tie-breaker: `tiebreaker_unit` is `None`) |
 
 ## Schema
 
-Per-league tables are added to `CREATE_SCHEMA` together with the league's accessors. `nba` exists only as a `leagues` catalog row.
+Per-league tables are added to `CREATE_SCHEMA` together with the league's accessors.

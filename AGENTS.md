@@ -11,7 +11,7 @@
 
 ## Project overview
 
-**League Bot** — Discord bot (Rust, poise + serenity) for sports prediction pools. World Cup, Premier League, and NFL are live; NBA planned. SQLite persistence; soccer data from [football-data.org](https://www.football-data.org/), NFL data from ESPN's public API.
+**League Bot** — Discord bot (Rust, poise + serenity) for sports prediction pools. World Cup, Premier League, NFL, and NBA are live. SQLite persistence; soccer data from [football-data.org](https://www.football-data.org/), NFL and NBA data from ESPN's public API.
 
 ## Layer boundaries
 
@@ -23,7 +23,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | `src/soccer.rs` | Soccer domain helpers on API data (used by the `wc` league module) |
 | `src/db/` | Persistence accessors; shared entities at root; league tables under `db/<slug>/` |
 | `src/league.rs` | Compile-time `League` enum — host dispatch face into league modules |
-| League modules (`src/wc/`, `src/epl/`, `src/nfl/`) | League-only variation (WC eliminations; NFL calendar, teams, poll); not shared soccer logic |
+| League modules (`src/wc/`, `src/epl/`, `src/nfl/`, `src/nba/`) | League-only variation (WC eliminations; NFL/NBA calendar, teams, poll); not shared soccer logic |
 | Host use cases (`registration.rs`, `standings.rs` formatters, `game_poll.rs`, `tiebreaker.rs`, `poller.rs`) | Shared sport-agnostic orchestration via `League` |
 | `src/commands/` | Thin Discord adapters only |
 
@@ -75,16 +75,16 @@ Shared poll, scoring, and tie-break logic lives in host modules (`game_poll`, `s
 
 When adding behavior: does every league get this? Yes → `game_poll` / `standings` / `tiebreaker` or a `League` arm. Every football-data.org soccer league only? → `soccer_poll` / `soccer`. One league → league module or league DB type.
 
-## NFL (ESPN)
+## NFL and NBA (ESPN)
 
-`src/nfl/` owns the ESPN mapping: `season` (season-year rollover in March, `YYYYMMDD` scoreboard range, `GameReport` from an `NflGame`, preseason/Pro Bowl excluded), `teams`, `poll`. NFL has **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none. `EspnNflApi` needs no token but must send a `User-Agent` (see `api/espn.rs`).
+`src/nfl/` and `src/nba/` own the ESPN mapping: `season` (calendar-year rollover + scoreboard fetch, `GameReport` from a provider game, exhibition games excluded), `teams`, `poll`. NBA fetches month-by-month (`YYYYMM`) because ESPN rejects day ranges and caps year queries at 1000 events. Both have **no tie-breaker**: `League::tiebreaker_unit` is `None`, the tie-break arms are no-ops, and `/pick-player` replies that the league has none. `EspnNflApi` / `EspnNbaApi` need no token but must send a `User-Agent` (see `api/espn.rs` / `api/espn_nba.rs`).
 
 Procedure and file-level steps: **`/add-league` skill**. DB accessor rules when editing `src/db/**`: **`db-layer.mdc`**.
 
 ## Key patterns
 
 - Resolve the target season with `season::resolve(&conn, guild_id, league)` (returns `(Season, League)`), then call enum methods (`list_teams`, `standings`, `poll`, …); `League::for_season` when you already hold a `season_id`
-- `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`, NFL uses `EspnNflApi::new(data.http.clone())`
+- `Data` holds `db` + shared `http`; soccer leagues use `FootballDataApi::from_env(data.http.clone())`, NFL/NBA use `EspnNflApi` / `EspnNbaApi` with `data.http.clone()`
 - User-facing sport words come from `League` (`tiebreaker_unit` is `Option` — `None` hides tie-breaker lines, `draw_label`, `finished_label`) — do not hardcode "goals"/"draw" in host formatters
 - Types from `crate::api`; soccer domain helpers from `crate::soccer`
 - Competition code from `league_competition_code()` via league slug

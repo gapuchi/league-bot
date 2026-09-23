@@ -2,7 +2,7 @@
 
 Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in a configured channel.
 
-The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, and NFL are fully supported today; NBA pools are coming soon.
+The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, NFL, and NBA are fully supported today.
 
 ## Setup
 
@@ -126,4 +126,10 @@ The background poller fetches finished games from ESPN's public NFL API (no API 
 
 ### NBA (`nba`)
 
-Coming soon.
+Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Lakers`, `LAL`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
+
+**Scoring** — regular-season win 1, loss 0 per game; a playoff (postseason) win is worth 3. Regular-season, Play-In, and playoff games count; preseason and the All-Star Game do not. Play-In wins use regular-season scoring. Basketball games never end level, so there is no tie score.
+
+**Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NBA seasons.
+
+The background poller fetches finished games from ESPN's public NBA API (no API key). Every live NBA season tracks the current NBA calendar season (the offseason rolls over to the next season), so start one season per year.
