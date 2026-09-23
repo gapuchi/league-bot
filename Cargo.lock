@@ -904,7 +904,7 @@ dependencies = [
 
 [[package]]
 name = "league-bot"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "dotenvy",
  "poise",
