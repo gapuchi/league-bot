@@ -3,6 +3,7 @@ mod epl;
 mod league;
 mod league_macros;
 mod migrate;
+mod nba;
 mod nfl;
 mod registration;
 mod season;
@@ -18,6 +19,7 @@ pub use epl::{
 };
 pub use league::{competition_code as league_competition_code, exists as league_exists};
 pub use migrate::SCHEMA_VERSION;
+pub use nba::{NbaMatchResult, NbaProcessedGame};
 pub use nfl::{NflMatchResult, NflProcessedGame};
 pub use registration::Registration;
 pub use season::{RosterPhase, Season, SeasonMeta};

@@ -46,6 +46,6 @@ fn commands_for(
 ) -> Vec<poise::Command<crate::types::Data, crate::types::Error>> {
     match league {
         League::Wc => vec![remaining()],
-        League::Epl | League::Nfl => vec![],
+        League::Epl | League::Nfl | League::Nba => vec![],
     }
 }
