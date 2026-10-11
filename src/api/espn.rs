@@ -1,11 +1,12 @@
-//! ESPN public NFL endpoints (no API key). Ids arrive as JSON strings and are
-//! parsed to `i64` here so downstream code sees the same shape as other providers.
+//! ESPN public NFL and NBA endpoints (no API key). Ids arrive as JSON strings and
+//! are parsed to `i64` here so downstream code sees the same shape as other providers.
 
 use serde::{Deserialize, Deserializer};
 
 use super::{ApiError, check_response};
 
 const SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
+const NBA_SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
 /// Large enough to return a whole season of games in one page.
 const PAGE_LIMIT: u32 = 1000;
 /// ESPN's edge returns 403 to unidentified clients; a crawler-style `name/version (+url)`
@@ -206,6 +207,156 @@ impl EspnNflApi {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NbaTeam {
+    #[serde(deserialize_with = "string_i64")]
+    pub id: i64,
+    pub display_name: String,
+    pub short_display_name: Option<String>,
+    pub abbreviation: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NbaCompetitor {
+    pub home_away: String,
+    #[serde(default, deserialize_with = "opt_string_i64")]
+    pub score: Option<i64>,
+    pub team: NbaTeam,
+}
+
+/// One scheduled or finished NBA game. `season_type` is ESPN's numbering: 1 preseason,
+/// 2 regular season, 3 postseason. `season_year` is the NBA season the game belongs to;
+/// ESPN labels each season by the year it ends (the 2025-26 season is `2026`), so a
+/// season spans two calendar years and the scoreboard reports it independently.
+#[derive(Debug, Clone)]
+pub struct NbaGame {
+    pub id: i64,
+    pub season_year: i64,
+    pub season_type: i64,
+    pub completed: bool,
+    pub competitors: Vec<NbaCompetitor>,
+}
+
+#[derive(Deserialize)]
+struct NbaTeamsResponse {
+    sports: Vec<NbaTeamsSport>,
+}
+
+#[derive(Deserialize)]
+struct NbaTeamsSport {
+    leagues: Vec<NbaTeamsLeague>,
+}
+
+#[derive(Deserialize)]
+struct NbaTeamsLeague {
+    teams: Vec<NbaTeamEntry>,
+}
+
+#[derive(Deserialize)]
+struct NbaTeamEntry {
+    team: NbaTeam,
+}
+
+#[derive(Deserialize)]
+struct NbaScoreboardResponse {
+    #[serde(default)]
+    events: Vec<NbaEvent>,
+}
+
+#[derive(Deserialize)]
+struct NbaEvent {
+    #[serde(deserialize_with = "string_i64")]
+    id: i64,
+    season: NbaEventSeason,
+    competitions: Vec<NbaCompetition>,
+}
+
+#[derive(Deserialize)]
+struct NbaEventSeason {
+    year: i64,
+    #[serde(rename = "type")]
+    season_type: i64,
+}
+
+#[derive(Deserialize)]
+struct NbaCompetition {
+    competitors: Vec<NbaCompetitor>,
+    status: NbaCompetitionStatus,
+}
+
+#[derive(Deserialize)]
+struct NbaCompetitionStatus {
+    #[serde(rename = "type")]
+    status_type: NbaStatusType,
+}
+
+#[derive(Deserialize)]
+struct NbaStatusType {
+    completed: bool,
+}
+
+#[derive(Clone)]
+pub struct EspnNbaApi {
+    client: reqwest::Client,
+}
+
+impl EspnNbaApi {
+    pub fn new(client: reqwest::Client) -> Self {
+        Self { client }
+    }
+
+    async fn get(&self, url: String) -> Result<reqwest::Response, ApiError> {
+        let response = self
+            .client
+            .get(url)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .map_err(ApiError::Request)?;
+        check_response(response)
+    }
+
+    pub async fn fetch_teams(&self) -> Result<Vec<NbaTeam>, ApiError> {
+        let response = self.get(format!("{NBA_SITE_BASE_URL}/teams")).await?;
+        let body: NbaTeamsResponse = response.json().await.map_err(ApiError::Request)?;
+        Ok(body
+            .sports
+            .into_iter()
+            .flat_map(|sport| sport.leagues)
+            .flat_map(|league| league.teams)
+            .map(|entry| entry.team)
+            .collect())
+    }
+
+    /// Every game the scoreboard lists for calendar `year`, all season types. An NBA
+    /// season is played across two calendar years, so callers combine two of these and
+    /// filter by [`NbaGame::season_year`]; ESPN rejects `YYYYMMDD` date ranges with 400.
+    pub async fn fetch_games_for_year(&self, year: i64) -> Result<Vec<NbaGame>, ApiError> {
+        let response = self
+            .get(format!(
+                "{NBA_SITE_BASE_URL}/scoreboard?dates={year}&limit={PAGE_LIMIT}"
+            ))
+            .await?;
+        let body: NbaScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
+        Ok(body
+            .events
+            .into_iter()
+            .filter_map(|event| {
+                let competition = event.competitions.into_iter().next()?;
+                Some(NbaGame {
+                    id: event.id,
+                    season_year: event.season.year,
+                    season_type: event.season.season_type,
+                    completed: competition.status.status_type.completed,
+                    competitors: competition.competitors,
+                })
+            })
+            .collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +376,22 @@ mod tests {
         .unwrap();
         assert_eq!(without_score.score, None);
         assert_eq!(without_score.team.id, 6);
+    }
+
+    #[test]
+    fn nba_competitor_score_accepts_string_or_missing() {
+        let with_score: NbaCompetitor = serde_json::from_str(
+            r#"{"homeAway":"home","score":"112","team":{"id":"13","displayName":"Los Angeles Lakers"}}"#,
+        )
+        .unwrap();
+        assert_eq!(with_score.score, Some(112));
+        assert_eq!(with_score.team.id, 13);
+
+        let without_score: NbaCompetitor = serde_json::from_str(
+            r#"{"homeAway":"away","team":{"id":2,"displayName":"Boston Celtics"}}"#,
+        )
+        .unwrap();
+        assert_eq!(without_score.score, None);
+        assert_eq!(without_score.team.id, 2);
     }
 }

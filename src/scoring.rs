@@ -27,6 +27,15 @@ pub const NFL: ScoringRules = ScoringRules {
     playoff_win: Some(3.0),
 };
 
+/// NBA: 1 for a regular-season win, nothing for a loss, and 2 for a playoff win.
+/// Basketball games cannot end level, so the draw value is never used.
+pub const NBA: ScoringRules = ScoringRules {
+    win: 1.0,
+    draw: 0.0,
+    loss: 0.0,
+    playoff_win: Some(2.0),
+};
+
 pub struct FinishedMatch {
     pub home_team_id: i64,
     pub away_team_id: i64,
