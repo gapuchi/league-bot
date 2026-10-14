@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use super::{ApiError, check_response};
+use super::{ApiError, check_response, decode_json};
 
 const BASE_URL: &str = "https://api.football-data.org/v4";
 
@@ -137,7 +137,7 @@ impl FootballDataApi {
     pub async fn fetch_teams(&self, competition: &str) -> Result<Vec<Team>, ApiError> {
         let path = format!("/competitions/{competition}/teams");
         let response = self.get(&path).await?;
-        let body: TeamsResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: TeamsResponse = decode_json(response).await?;
         Ok(body.teams)
     }
 
@@ -147,14 +147,14 @@ impl FootballDataApi {
     ) -> Result<Vec<Match>, ApiError> {
         let path = format!("/competitions/{competition}/matches");
         let response = self.get(&path).await?;
-        let body: MatchesResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: MatchesResponse = decode_json(response).await?;
         Ok(body.matches)
     }
 
     pub async fn fetch_team_squad(&self, team_id: i64) -> Result<Vec<SquadPlayer>, ApiError> {
         let path = format!("/teams/{team_id}");
         let response = self.get(&path).await?;
-        let body: TeamDetailResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: TeamDetailResponse = decode_json(response).await?;
         Ok(body.squad)
     }
 
@@ -162,7 +162,7 @@ impl FootballDataApi {
         // football-data.org defaults to limit=10; tie-breaker picks may be outside the top ten.
         let path = format!("/competitions/{competition}/scorers?limit=500");
         let response = self.get(&path).await?;
-        let body: ScorersResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: ScorersResponse = decode_json(response).await?;
         Ok(body
             .scorers
             .into_iter()

@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Deserializer};
 
-use super::{ApiError, check_response};
+use super::{ApiError, check_response, decode_json};
 
 const SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 const NBA_SITE_BASE_URL: &str = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba";
@@ -169,7 +169,7 @@ impl EspnNflApi {
 
     pub async fn fetch_teams(&self) -> Result<Vec<NflTeam>, ApiError> {
         let response = self.get(format!("{SITE_BASE_URL}/teams")).await?;
-        let body: TeamsResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: TeamsResponse = decode_json(response).await?;
         Ok(body
             .sports
             .into_iter()
@@ -188,7 +188,7 @@ impl EspnNflApi {
                 "{SITE_BASE_URL}/scoreboard?dates={year}&limit={PAGE_LIMIT}"
             ))
             .await?;
-        let body: ScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: ScoreboardResponse = decode_json(response).await?;
         Ok(body
             .events
             .into_iter()
@@ -320,7 +320,7 @@ impl EspnNbaApi {
 
     pub async fn fetch_teams(&self) -> Result<Vec<NbaTeam>, ApiError> {
         let response = self.get(format!("{NBA_SITE_BASE_URL}/teams")).await?;
-        let body: NbaTeamsResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: NbaTeamsResponse = decode_json(response).await?;
         Ok(body
             .sports
             .into_iter()
@@ -339,7 +339,7 @@ impl EspnNbaApi {
                 "{NBA_SITE_BASE_URL}/scoreboard?dates={year}&limit={PAGE_LIMIT}"
             ))
             .await?;
-        let body: NbaScoreboardResponse = response.json().await.map_err(ApiError::Request)?;
+        let body: NbaScoreboardResponse = decode_json(response).await?;
         Ok(body
             .events
             .into_iter()
