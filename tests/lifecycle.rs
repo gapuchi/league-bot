@@ -15,6 +15,7 @@ use league_bot::{
 };
 
 const GUILD: u64 = 111;
+const CHANNEL: u64 = 4242;
 
 fn test_data(conn: Connection) -> Data {
     Data {
@@ -30,7 +31,7 @@ fn fresh() -> Connection {
 }
 
 fn wc_season(conn: &Connection) -> Season {
-    Season::get_or_create(conn, GUILD, "wc", "world-cup-2026", "World Cup 2026").unwrap()
+    Season::get_or_create(conn, GUILD, "wc", "world-cup-2026", "World Cup 2026", CHANNEL).unwrap()
 }
 
 fn seed_active_draft(conn: &Connection, season_id: i64, user_ids: &[u64]) {
@@ -69,7 +70,7 @@ fn resolve_infers_the_only_live_season() {
 fn resolve_requires_league_when_several_seasons_are_live() {
     let conn = fresh();
     let wc = wc_season(&conn);
-    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026").unwrap();
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
 
     let message = user_message(season::resolve(&conn, GUILD, None).unwrap_err());
     assert!(message.contains("Which league?"), "{message}");
@@ -98,8 +99,8 @@ fn resolve_reports_missing_seasons() {
 #[test]
 fn resolve_by_league_prefers_live_then_newest() {
     let conn = fresh();
-    let old = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2025", "NFL 2025").unwrap();
-    let new = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026").unwrap();
+    let old = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2025", "NFL 2025", CHANNEL).unwrap();
+    let new = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
 
     Season::set_polling_enabled(&conn, new.id, false).unwrap();
     assert_eq!(
@@ -119,23 +120,26 @@ fn resolve_by_league_prefers_live_then_newest() {
 #[tokio::test]
 async fn season_start_creates_named_season() {
     let data = test_data(fresh());
-    let message = season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"))
-        .await
-        .unwrap();
+    let message =
+        season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"), CHANNEL)
+            .await
+            .unwrap();
     assert!(message.contains("Started **World Cup 2026**"), "{message}");
     assert!(message.contains("Match polling enabled"));
+    assert!(message.contains("<#4242>"), "{message}");
 
     let conn = data.db.lock().await;
     let (season, league) = season::resolve(&conn, GUILD, None).unwrap();
     assert_eq!(league, League::Wc);
     assert!(season.polling_enabled);
     assert_eq!(season.slug, "world-cup-2026");
+    assert_eq!(season.announce_channel_id, CHANNEL);
 }
 
 #[tokio::test]
 async fn season_start_defaults_name_to_league_and_year() {
     let data = test_data(fresh());
-    season::start_for_guild(&data, GUILD, League::Nfl, None)
+    season::start_for_guild(&data, GUILD, League::Nfl, None, CHANNEL)
         .await
         .unwrap();
 
@@ -148,14 +152,14 @@ async fn season_start_defaults_name_to_league_and_year() {
 #[tokio::test]
 async fn season_start_ends_the_previous_live_season_of_that_league() {
     let data = test_data(fresh());
-    season::start_for_guild(&data, GUILD, League::Nfl, Some("NFL 2025"))
+    season::start_for_guild(&data, GUILD, League::Nfl, Some("NFL 2025"), CHANNEL)
         .await
         .unwrap();
-    season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"))
+    season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"), CHANNEL)
         .await
         .unwrap();
 
-    let message = season::start_for_guild(&data, GUILD, League::Nfl, Some("NFL 2026"))
+    let message = season::start_for_guild(&data, GUILD, League::Nfl, Some("NFL 2026"), CHANNEL)
         .await
         .unwrap();
     assert!(message.contains("Ended **NFL 2025**"), "{message}");
@@ -176,25 +180,39 @@ async fn season_start_resumes_ended_season() {
     Season::set_polling_enabled(&conn, season.id, false).unwrap();
 
     let data = test_data(conn);
-    let message = season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"))
-        .await
-        .unwrap();
+    let message =
+        season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"), CHANNEL)
+            .await
+            .unwrap();
     assert!(message.contains("Resumed"), "{message}");
 
     let conn = data.db.lock().await;
-    assert!(Season::get(&conn, season.id).unwrap().unwrap().polling_enabled);
+    let season = Season::get(&conn, season.id).unwrap().unwrap();
+    assert!(season.polling_enabled);
+    assert_eq!(season.announce_channel_id, CHANNEL);
 }
 
 #[tokio::test]
 async fn season_start_is_idempotent_when_already_running() {
     let conn = fresh();
-    wc_season(&conn);
+    let season = wc_season(&conn);
 
     let data = test_data(conn);
-    let message = season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"))
-        .await
-        .unwrap();
+    let message =
+        season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"), CHANNEL)
+            .await
+            .unwrap();
     assert!(message.contains("already running"), "{message}");
+    assert!(message.contains("<#4242>"), "{message}");
+
+    let conn = data.db.lock().await;
+    assert_eq!(
+        Season::get(&conn, season.id)
+            .unwrap()
+            .unwrap()
+            .announce_channel_id,
+        CHANNEL
+    );
 }
 
 #[tokio::test]
@@ -219,15 +237,11 @@ async fn season_end_stops_polling_and_is_idempotent() {
 }
 
 #[tokio::test]
-async fn season_channel_and_list_report_state() {
-    let conn = fresh();
-    wc_season(&conn);
-    let data = test_data(conn);
-
-    let message = season::set_channel_for_guild(&data, GUILD, None, 4242)
+async fn season_list_reports_the_start_channel() {
+    let data = test_data(fresh());
+    season::start_for_guild(&data, GUILD, League::Wc, Some("World Cup 2026"), CHANNEL)
         .await
         .unwrap();
-    assert!(message.contains("<#4242>"), "{message}");
 
     let listing = season::list_for_guild(&data, GUILD).await.unwrap();
     assert!(listing.contains("World Cup 2026"), "{listing}");
@@ -350,7 +364,7 @@ async fn draft_unpick_rejects_when_no_picks_or_frozen() {
 async fn draft_commands_are_scoped_to_the_named_league() {
     let conn = fresh();
     let wc = wc_season(&conn);
-    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026").unwrap();
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
     seed_active_draft(&conn, nfl.id, &[10, 20]);
 
     let data = test_data(conn);
