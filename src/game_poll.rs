@@ -1,6 +1,7 @@
 //! Sport-agnostic ingest of one finished game: persist the score, award points to the
-//! owners of both teams, and announce in the season channel. League modules map their
-//! provider payload into a [`GameReport`]; per-league tables are reached through `League`.
+//! owners of both teams, and announce in the channel where the season was started.
+//! League modules map their provider payload into a [`GameReport`]; per-league tables
+//! are reached through `League`.
 
 use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
@@ -154,9 +155,7 @@ pub async fn process_game(
     if updates.is_empty() {
         return Ok(());
     }
-    let Some(channel_id) = season.announce_channel_id else {
-        return Ok(());
-    };
+    let channel_id = season.announce_channel_id;
 
     let correction_line = is_correction
         .then_some(previous_score)

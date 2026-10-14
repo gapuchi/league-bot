@@ -75,6 +75,7 @@ pub async fn start_for_guild(
     guild_id: u64,
     league: League,
     name: Option<&str>,
+    channel_id: u64,
 ) -> Result<String, Error> {
     let name = match name.map(str::trim) {
         Some(name) if !name.is_empty() => name.to_owned(),
@@ -87,7 +88,8 @@ pub async fn start_for_guild(
 
     let conn = data.db.lock().await;
     let existed = Season::get_by_guild_league_slug(&conn, guild_id, league.slug(), &slug)?;
-    let season = Season::get_or_create(&conn, guild_id, league.slug(), &slug, &name)?;
+    let season = Season::get_or_create(&conn, guild_id, league.slug(), &slug, &name, channel_id)?;
+    Season::set_announce_channel(&conn, season.id, channel_id)?;
 
     let ended: Vec<SeasonMeta> = Season::list_live_for_guild(&conn, guild_id)?
         .into_iter()
@@ -108,20 +110,21 @@ pub async fn start_for_guild(
         ),
     };
 
+    let channel = format!(" Announcements go in <#{channel_id}>.");
     Ok(match existed {
         None => format!(
-            "Started **{}** (`{slug}`) for {}. Match polling enabled.{ended_line} Set `/season channel` for announcements.",
+            "Started **{}** (`{slug}`) for {}. Match polling enabled.{ended_line}{channel}",
             season.name,
             league.display_name()
         ),
         Some(_) if !season.polling_enabled => {
             Season::set_polling_enabled(&conn, season.id, true)?;
             format!(
-                "Resumed **{}** (`{slug}`) — match polling enabled.{ended_line}",
+                "Resumed **{}** (`{slug}`) — match polling enabled.{ended_line}{channel}",
                 season.name
             )
         }
-        Some(_) => format!("**{}** (`{slug}`) is already running.", season.name),
+        Some(_) => format!("**{}** (`{slug}`) is already running.{channel}", season.name),
     })
 }
 
@@ -145,21 +148,6 @@ pub async fn end_for_guild(
     ))
 }
 
-pub async fn set_channel_for_guild(
-    data: &Data,
-    guild_id: u64,
-    league: Option<League>,
-    channel_id: u64,
-) -> Result<String, Error> {
-    let conn = data.db.lock().await;
-    let (season, _) = resolve(&conn, guild_id, league)?;
-    Season::set_announce_channel(&conn, season.id, channel_id)?;
-    Ok(format!(
-        "**{}** announcements will be posted in <#{channel_id}>.",
-        season.name
-    ))
-}
-
 pub async fn list_for_guild(data: &Data, guild_id: u64) -> Result<String, Error> {
     let conn = data.db.lock().await;
     let seasons = Season::list_for_guild(&conn, guild_id)?;
@@ -172,10 +160,7 @@ pub async fn list_for_guild(data: &Data, guild_id: u64) -> Result<String, Error>
 fn describe(meta: &SeasonMeta) -> String {
     let season = &meta.season;
     let state = if season.polling_enabled { "live" } else { "ended" };
-    let channel = match season.announce_channel_id {
-        Some(id) => format!("<#{id}>"),
-        None => "no channel".into(),
-    };
+    let channel = format!("<#{}>", season.announce_channel_id);
     format!(
         "**{}** — **{}** (`{}`) · {state} · roster {} · {channel}",
         meta.league_name,

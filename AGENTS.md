@@ -34,7 +34,7 @@ Strict layers — details when editing matching paths are in `.cursor/rules/`:
 | Registration | `commands/registration.rs` | `registration.rs` → `League` |
 | Shared standings | `commands/standings.rs` | `League::standings` → league module (format helpers in `standings.rs`) |
 | WC-only cmds | `commands/wc/` (`remaining`) | `wc/` (registered via `commands_for(League)`) |
-| Season lifecycle | `commands/season.rs` | `season.rs` (`start` / `end` / `set_channel` / `list`, plus `resolve`) |
+| Season lifecycle | `commands/season.rs` | `season.rs` (`start` / `end` / `list`, plus `resolve`) |
 
 New behavior: use case first → thin handler in `commands/` → `commands::all()`.
 

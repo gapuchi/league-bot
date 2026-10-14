@@ -10,7 +10,7 @@ SQLite persistence for Discord prediction seasons. A **season** is one Discord g
 
 ### Guild configuration
 
-- **Season** — One guild’s tracking of a league competition (`guild_id`, `league_id`, slug, name, announce channel, `polling_enabled`, `roster_phase`). `polling_enabled` marks the season live: the poller processes it and gameplay commands resolve to it (`season::resolve`). `/season start` keeps at most one live season per league per guild. `roster_phase` is `open` | `drafting` | `frozen` for claim/draft gating. There is no per-guild default season.
+- **Season** — One guild’s tracking of a league competition (`guild_id`, `league_id`, slug, name, announce channel, `polling_enabled`, `roster_phase`). The announce channel is required and is the channel where `/season start` ran. `polling_enabled` marks the season live: the poller processes it and gameplay commands resolve to it (`season::resolve`). `/season start` keeps at most one live season per league per guild. `roster_phase` is `open` | `drafting` | `frozen` for claim/draft gating. There is no per-guild default season.
 - **Draft session / participants** — Pre-season draft order (`draft_sessions`, `draft_participants`) scoped by `season_id`.
 
 ### Gameplay (per season)

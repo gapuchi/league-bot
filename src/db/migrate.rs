@@ -1,6 +1,6 @@
 use rusqlite::{Connection, OptionalExtension};
 
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 pub const WC_LEAGUE_SLUG: &str = "wc";
 pub const NBA_LEAGUE_SLUG: &str = "nba";
 pub const NFL_LEAGUE_SLUG: &str = "nfl";
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS seasons (
     league_id               INTEGER NOT NULL REFERENCES leagues(id),
     slug                    TEXT NOT NULL,
     name                    TEXT NOT NULL,
-    announce_channel_id     INTEGER,
+    announce_channel_id     INTEGER NOT NULL,
     polling_enabled         INTEGER NOT NULL DEFAULT 1,
     roster_phase            TEXT NOT NULL DEFAULT 'open',
     UNIQUE (guild_id, league_id, slug)
@@ -249,7 +249,92 @@ fn upgrade(conn: &Connection, from: i64) -> rusqlite::Result<()> {
             ",
         )?;
     }
+    if from < 6 {
+        require_announce_channel(conn)?;
+    }
     Ok(())
+}
+
+fn require_announce_channel(conn: &Connection) -> rusqlite::Result<()> {
+    let notnull: i64 = conn.query_row(
+        "SELECT \"notnull\" FROM pragma_table_info('seasons') WHERE name = 'announce_channel_id'",
+        [],
+        |row| row.get(0),
+    )?;
+    if notnull != 0 {
+        return Ok(());
+    }
+
+    // Rows with no channel cannot be loaded once the column is required.
+    for table in [
+        "draft_participants",
+        "draft_sessions",
+        "registrations",
+        "wc_match_results",
+        "wc_processed_matches",
+        "wc_announced_eliminations",
+        "wc_tiebreaker_picks",
+        "wc_player_goal_totals",
+        "epl_match_results",
+        "epl_processed_matches",
+        "epl_tiebreaker_picks",
+        "epl_player_goal_totals",
+        "nfl_match_results",
+        "nfl_processed_games",
+        "nba_match_results",
+        "nba_processed_games",
+    ] {
+        if !table_exists(conn, table)? {
+            continue;
+        }
+        conn.execute(
+            &format!(
+                "DELETE FROM {table} WHERE season_id IN (
+                    SELECT id FROM seasons WHERE announce_channel_id IS NULL
+                )"
+            ),
+            [],
+        )?;
+    }
+    conn.execute(
+        "DELETE FROM seasons WHERE announce_channel_id IS NULL",
+        [],
+    )?;
+
+    conn.execute_batch("PRAGMA foreign_keys = OFF")?;
+    conn.execute_batch(
+        "
+        CREATE TABLE seasons_new (
+            id                      INTEGER PRIMARY KEY,
+            guild_id                INTEGER NOT NULL,
+            league_id               INTEGER NOT NULL REFERENCES leagues(id),
+            slug                    TEXT NOT NULL,
+            name                    TEXT NOT NULL,
+            announce_channel_id     INTEGER NOT NULL,
+            polling_enabled         INTEGER NOT NULL DEFAULT 1,
+            roster_phase            TEXT NOT NULL DEFAULT 'open',
+            UNIQUE (guild_id, league_id, slug)
+        );
+        INSERT INTO seasons_new (
+            id, guild_id, league_id, slug, name, announce_channel_id, polling_enabled, roster_phase
+        )
+        SELECT id, guild_id, league_id, slug, name, announce_channel_id, polling_enabled, roster_phase
+        FROM seasons;
+        DROP TABLE seasons;
+        ALTER TABLE seasons_new RENAME TO seasons;
+        ",
+    )?;
+    conn.execute_batch("PRAGMA foreign_keys = ON")?;
+    Ok(())
+}
+
+fn table_exists(conn: &Connection, table: &str) -> rusqlite::Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
 }
 
 fn drop_column_if_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<()> {

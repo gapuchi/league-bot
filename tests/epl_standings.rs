@@ -10,7 +10,8 @@ fn epl_standings_use_match_results() {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();
 
-    let season = Season::get_or_create(&conn, 111, "epl", "2025-26", "Premier League 2025-26").unwrap();
+    let season =
+        Season::get_or_create(&conn, 111, "epl", "2025-26", "Premier League 2025-26", 1).unwrap();
     Registration::upsert(&conn, season.id, 100, 64, "Liverpool FC").unwrap();
     Registration::upsert(&conn, season.id, 200, 57, "Arsenal FC").unwrap();
 

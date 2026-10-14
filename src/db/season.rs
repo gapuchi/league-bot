@@ -36,7 +36,7 @@ pub struct Season {
     pub league_id: i64,
     pub slug: String,
     pub name: String,
-    pub announce_channel_id: Option<u64>,
+    pub announce_channel_id: u64,
     /// When true, the background poller includes this season.
     pub polling_enabled: bool,
     pub roster_phase: RosterPhase,
@@ -139,6 +139,7 @@ impl Season {
         league_slug: &str,
         slug: &str,
         name: &str,
+        channel_id: u64,
     ) -> rusqlite::Result<Self> {
         if let Some(season) = Self::get_by_guild_league_slug(conn, guild_id, league_slug, slug)? {
             return Ok(season);
@@ -149,10 +150,10 @@ impl Season {
 
         conn.execute(
             "
-            INSERT INTO seasons (guild_id, league_id, slug, name)
-            VALUES (?1, ?2, ?3, ?4)
+            INSERT INTO seasons (guild_id, league_id, slug, name, announce_channel_id)
+            VALUES (?1, ?2, ?3, ?4, ?5)
             ",
-            params![guild_id as i64, league_id, slug, name],
+            params![guild_id as i64, league_id, slug, name, channel_id as i64],
         )?;
         Self::get(conn, conn.last_insert_rowid())?.ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
@@ -230,7 +231,7 @@ impl Season {
 /// Reads season columns in order:
 /// `id, guild_id, league_id, slug, name, announce_channel_id, polling_enabled, roster_phase`.
 fn season_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Season> {
-    let channel: Option<i64> = row.get(5)?;
+    let channel: i64 = row.get(5)?;
     let polling: i64 = row.get(6)?;
     let phase_raw: String = row.get(7)?;
     let roster_phase = RosterPhase::parse(&phase_raw).ok_or_else(|| {
@@ -246,7 +247,7 @@ fn season_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Season> {
         league_id: row.get(2)?,
         slug: row.get(3)?,
         name: row.get(4)?,
-        announce_channel_id: channel.map(|id| id as u64),
+        announce_channel_id: channel as u64,
         polling_enabled: polling != 0,
         roster_phase,
     })

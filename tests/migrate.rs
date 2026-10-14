@@ -11,7 +11,7 @@ fn fresh_init_seeds_catalog_without_seasons() {
         .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 5);
+    assert_eq!(SCHEMA_VERSION, 6);
 
     let leagues: i64 = conn
         .query_row("SELECT COUNT(*) FROM leagues", [], |row| row.get(0))
@@ -142,7 +142,8 @@ fn upgrade_from_v2_drops_dead_tables_and_columns_but_keeps_data() {
             polling_enabled INTEGER NOT NULL DEFAULT 1, roster_phase TEXT NOT NULL DEFAULT 'open',
             starts_at TEXT, ends_at TEXT, UNIQUE (guild_id, league_id, slug)
         );
-        INSERT INTO seasons (id, guild_id, league_id, slug, name) VALUES (7, 111, 1, 'wc-2026', 'World Cup 2026');
+        INSERT INTO seasons (id, guild_id, league_id, slug, name, announce_channel_id)
+            VALUES (7, 111, 1, 'wc-2026', 'World Cup 2026', 4242);
         CREATE TABLE registrations (
             season_id INTEGER NOT NULL, user_id INTEGER NOT NULL, team_id INTEGER NOT NULL, team_name TEXT NOT NULL,
             PRIMARY KEY (season_id, team_id)
@@ -180,6 +181,15 @@ fn upgrade_from_v2_drops_dead_tables_and_columns_but_keeps_data() {
 
     let season = Season::get(&conn, 7).unwrap().unwrap();
     assert_eq!(season.name, "World Cup 2026");
+    assert_eq!(season.announce_channel_id, 4242);
+    let channel_required: i64 = conn
+        .query_row(
+            "SELECT \"notnull\" FROM pragma_table_info('seasons') WHERE name = 'announce_channel_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(channel_required, 1);
     assert_eq!(
         league_bot::db::WcMatchResult::score(&conn, 7, 1).unwrap(),
         Some((2, 1))
@@ -211,11 +221,11 @@ fn upgrade_from_v3_drops_guild_config_and_keeps_one_live_season_per_league() {
             polling_enabled INTEGER NOT NULL DEFAULT 1, roster_phase TEXT NOT NULL DEFAULT 'open',
             UNIQUE (guild_id, league_id, slug)
         );
-        INSERT INTO seasons (id, guild_id, league_id, slug, name) VALUES
-            (1, 111, 3, 'nfl-2025', 'NFL 2025'),
-            (2, 111, 3, 'nfl-2026', 'NFL 2026'),
-            (3, 111, 1, 'wc-2026', 'World Cup 2026'),
-            (4, 222, 3, 'nfl-2025', 'NFL 2025');
+        INSERT INTO seasons (id, guild_id, league_id, slug, name, announce_channel_id) VALUES
+            (1, 111, 3, 'nfl-2025', 'NFL 2025', 4242),
+            (2, 111, 3, 'nfl-2026', 'NFL 2026', 4242),
+            (3, 111, 1, 'wc-2026', 'World Cup 2026', 4242),
+            (4, 222, 3, 'nfl-2025', 'NFL 2025', 4242);
         CREATE TABLE guild_config (guild_id INTEGER PRIMARY KEY, default_season_id INTEGER NOT NULL REFERENCES seasons(id));
         INSERT INTO guild_config VALUES (111, 1);
         ",
@@ -235,6 +245,52 @@ fn upgrade_from_v3_drops_guild_config_and_keeps_one_live_season_per_league() {
     assert_eq!(live, vec![2, 3, 4]);
     assert_eq!(Season::list_all_with_meta(&conn).unwrap().len(), 4);
     assert!(!Season::get(&conn, 1).unwrap().unwrap().polling_enabled);
+}
+
+#[test]
+fn upgrade_drops_seasons_that_never_had_a_channel() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (5);
+        CREATE TABLE leagues (
+            id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, sport TEXT NOT NULL
+        );
+        INSERT INTO leagues (id, slug, name, sport) VALUES (1, 'wc', 'FIFA World Cup', 'soccer');
+        CREATE TABLE seasons (
+            id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, league_id INTEGER NOT NULL,
+            slug TEXT NOT NULL, name TEXT NOT NULL, announce_channel_id INTEGER,
+            polling_enabled INTEGER NOT NULL DEFAULT 1, roster_phase TEXT NOT NULL DEFAULT 'open',
+            UNIQUE (guild_id, league_id, slug)
+        );
+        INSERT INTO seasons (id, guild_id, league_id, slug, name, announce_channel_id) VALUES
+            (1, 111, 1, 'wc-kept', 'Kept', 4242),
+            (2, 111, 1, 'wc-dropped', 'Dropped', NULL);
+        CREATE TABLE registrations (
+            season_id INTEGER NOT NULL, user_id INTEGER NOT NULL, team_id INTEGER NOT NULL,
+            team_name TEXT NOT NULL, PRIMARY KEY (season_id, team_id)
+        );
+        INSERT INTO registrations VALUES (1, 100, 1, 'Kept Team'), (2, 200, 2, 'Dropped Team');
+        ",
+    )
+    .unwrap();
+
+    db::init(&conn).unwrap();
+
+    assert!(Season::get(&conn, 1).unwrap().is_some());
+    assert!(Season::get(&conn, 2).unwrap().is_none());
+    assert_eq!(
+        league_bot::db::Registration::list_for_season(&conn, 1)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        league_bot::db::Registration::list_for_season(&conn, 2)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -258,9 +314,9 @@ fn get_or_create_scopes_by_guild() {
     let guild_b = 222_u64;
 
     let season_a =
-        Season::get_or_create(&conn, guild_a, "wc", "wc-2026", "World Cup 2026").unwrap();
+        Season::get_or_create(&conn, guild_a, "wc", "wc-2026", "World Cup 2026", 1).unwrap();
     let season_b =
-        Season::get_or_create(&conn, guild_b, "wc", "wc-2026", "World Cup 2026").unwrap();
+        Season::get_or_create(&conn, guild_b, "wc", "wc-2026", "World Cup 2026", 1).unwrap();
 
     assert_ne!(season_a.id, season_b.id);
     assert_eq!(season_a.guild_id, guild_a);
@@ -290,7 +346,7 @@ fn announced_elimination_tracks_per_season_team() {
     db::init(&conn).unwrap();
 
     let season =
-        Season::get_or_create(&conn, 111, "wc", "wc-2026", "World Cup 2026").unwrap();
+        Season::get_or_create(&conn, 111, "wc", "wc-2026", "World Cup 2026", 1).unwrap();
 
     use league_bot::db::WcAnnouncedElimination;
 
@@ -310,11 +366,11 @@ fn new_seasons_are_live_by_default_and_list_live_filters() {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();
 
-    let live = Season::get_or_create(&conn, 111, "wc", "wc-2026", "World Cup 2026").unwrap();
+    let live = Season::get_or_create(&conn, 111, "wc", "wc-2026", "World Cup 2026", 1).unwrap();
     assert!(live.polling_enabled);
     assert_eq!(live.roster_phase, league_bot::db::RosterPhase::Open);
 
-    let idle = Season::get_or_create(&conn, 222, "wc", "wc-2026", "World Cup 2026").unwrap();
+    let idle = Season::get_or_create(&conn, 222, "wc", "wc-2026", "World Cup 2026", 1).unwrap();
     Season::set_polling_enabled(&conn, idle.id, false).unwrap();
 
     let live_ids: Vec<i64> = Season::list_live_with_meta(&conn)

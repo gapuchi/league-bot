@@ -1,6 +1,6 @@
 # League Bot
 
-Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in a configured channel.
+Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
 
 The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, NFL, and NBA are fully supported today.
 
@@ -16,7 +16,7 @@ The bot can serve **multiple Discord servers** at once, and each server can run 
    - **Scopes:** `bot`, `applications.commands`
    - **Bot permissions:** View Channels, Send Messages, Embed Links, Create Public Threads, Send Messages in Threads
 
-   Open the generated URL to add the bot. It must be able to send messages (including embeds) in the channel you set with `/season channel`.
+   Open the generated URL to add the bot. It must be able to send messages (including embeds) in the channel where you run `/season start`.
 
 ### Local development
 
@@ -56,10 +56,9 @@ Each Discord server configures the bot independently. On a **new** server, an ad
 
 | Command | Who | What |
 |---------|-----|------|
-| `/season start <league> [name]` | admin | Create (or resume) a season. `name` defaults to the league plus the current year, e.g. `NFL 2026`. Starting a season **ends** that league's previous live season in the server, so a new year is one command. |
+| `/season start <league> [name]` | admin | Create (or resume) a season. `name` defaults to the league plus the current year, e.g. `NFL 2026`. Starting a season **ends** that league's previous live season in the server, so a new year is one command. Match announcements are posted in the channel where this command is run. |
 | `/season end [league]` | admin | Stop match polling. Data is kept; `/standings league:<league>` still works. |
-| `/season channel <#channel> [league]` | admin | Where match announcements are posted. Nothing is announced until this is set. |
-| `/season list` | anyone | Every season in the server with live/ended state, roster phase, and channel. |
+| `/season list` | anyone | Every season in the server with live/ended state, roster phase, and announcement channel. |
 
 ### The `league` option
 
@@ -90,7 +89,7 @@ Run `/help` to list all commands, or `/help <command>` for details (e.g. `/help 
 
 ### World Cup (`wc`)
 
-Each member claims one or more nations. Each nation can only be claimed by one person at a time; a person can claim multiple nations. When a claimed team's match finishes, the bot awards points and posts an announcement in the configured channel.
+Each member claims one or more nations. Each nation can only be claimed by one person at a time; a person can claim multiple nations. When a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
 
 **Scoring** — points per match based on the result for each claimed team:
 
@@ -106,7 +105,7 @@ The background poller runs every 5 minutes, fetching finished matches and scorer
 
 ### Premier League (`epl`)
 
-Each member claims one or more clubs. Each club can only be claimed by one person at a time; a person can claim multiple clubs. When a claimed team's match finishes, the bot awards points and posts an announcement in the configured channel.
+Each member claims one or more clubs. Each club can only be claimed by one person at a time; a person can claim multiple clubs. When a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
 
 **Scoring** — same win/draw/loss points as World Cup (3 / 1 / 0).
 
@@ -116,7 +115,7 @@ The background poller fetches finished matches and scorer totals from football-d
 
 ### NFL (`nfl`)
 
-Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Eagles`, `PHI`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
+Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Eagles`, `PHI`). When a claimed team's game goes final, the bot awards points and posts an announcement in the channel where the season was started.
 
 **Scoring** — regular-season win 1, tie 0.5, loss 0 per game; a playoff (postseason) win is worth 3. Regular-season and playoff games count; preseason and the Pro Bowl do not.
 
@@ -126,7 +125,7 @@ The background poller fetches finished games from ESPN's public NFL API (no API 
 
 ### NBA (`nba`)
 
-Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Lakers`, `LAL`). When a claimed team's game goes final, the bot awards points and posts an announcement in the configured channel.
+Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Lakers`, `LAL`). When a claimed team's game goes final, the bot awards points and posts an announcement in the channel where the season was started.
 
 **Scoring** — regular-season win 1, loss 0 per game; a playoff win is worth 2. Regular-season and playoff games count; preseason does not. (Basketball games cannot end level, so ties never award points.)
 

@@ -1,5 +1,3 @@
-use poise::serenity_prelude as serenity;
-
 use crate::{
     league::League,
     season,
@@ -13,14 +11,14 @@ use super::helpers::guild_id;
     prefix_command,
     slash_command,
     guild_only,
-    subcommands("season_start", "season_end", "season_channel", "season_list"),
+    subcommands("season_start", "season_end", "season_list"),
     subcommand_required
 )]
 pub async fn season(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Start a season for a league (ends that league's previous live season)
+/// Start a season in this channel (ends that league's previous live season)
 #[poise::command(
     prefix_command,
     slash_command,
@@ -37,7 +35,14 @@ pub async fn season_start(
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
-    let message = season::start_for_guild(ctx.data(), guild_id, league, name.as_deref()).await?;
+    let message = season::start_for_guild(
+        ctx.data(),
+        guild_id,
+        league,
+        name.as_deref(),
+        ctx.channel_id().get(),
+    )
+    .await?;
     ctx.say(message).await?;
     Ok(())
 }
@@ -57,26 +62,6 @@ pub async fn season_end(
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
     let message = season::end_for_guild(ctx.data(), guild_id, league).await?;
-    ctx.say(message).await?;
-    Ok(())
-}
-
-/// Set the channel for a season's match announcements
-#[poise::command(
-    prefix_command,
-    slash_command,
-    guild_only,
-    rename = "channel",
-    required_permissions = "MANAGE_GUILD"
-)]
-pub async fn season_channel(
-    ctx: Context<'_>,
-    #[description = "Channel for match result announcements"] channel: serenity::GuildChannel,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
-) -> Result<(), Error> {
-    let guild_id = guild_id(&ctx)?;
-    let message =
-        season::set_channel_for_guild(ctx.data(), guild_id, league, channel.id.get()).await?;
     ctx.say(message).await?;
     Ok(())
 }

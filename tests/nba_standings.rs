@@ -14,7 +14,7 @@ fn seeded_conn() -> (Connection, Season) {
     let conn = Connection::open_in_memory().unwrap();
     db::init(&conn).unwrap();
 
-    let season = Season::get_or_create(&conn, 111, "nba", "2026", "NBA 2026").unwrap();
+    let season = Season::get_or_create(&conn, 111, "nba", "2026", "NBA 2026", 1).unwrap();
     Registration::upsert(&conn, season.id, 100, 13, "Los Angeles Lakers").unwrap();
     Registration::upsert(&conn, season.id, 200, 2, "Boston Celtics").unwrap();
     Registration::upsert(&conn, season.id, 300, 14, "Los Angeles Clippers").unwrap();

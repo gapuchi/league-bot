@@ -111,7 +111,7 @@ cargo test
 cargo clippy -- -D warnings
 ```
 
-Manual smoke: `/season start <league>` → `/season channel` → `/claim` / `/standings` (with and without the `league` option while another season is live) → confirm poller logs for live seasons only.
+Manual smoke: `/season start <league>` (announcements post in that channel) → `/claim` / `/standings` (with and without the `league` option while another season is live) → confirm poller logs for live seasons only.
 
 ## Done when
 

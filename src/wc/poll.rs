@@ -83,11 +83,7 @@ async fn announce_new_eliminations(
         return Ok(());
     }
 
-    let Some(channel_id) = season.announce_channel_id else {
-        return Ok(());
-    };
-
-    post_elimination_announcement(http, channel_id, &notices).await?;
+    post_elimination_announcement(http, season.announce_channel_id, &notices).await?;
 
     {
         let conn = data.db.lock().await;
