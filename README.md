@@ -1,22 +1,19 @@
 # League Bot
 
-Discord bot for sports prediction pools. Each member can claim one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
+Discord bot for sports prediction pools. Each member claims one or more teams; when a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
 
-The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, NFL, and NBA are fully supported today.
+The bot can serve **multiple Discord servers** at once, and each server can run **several leagues side by side** (for example an NFL pool and a Premier League pool in the same server). Every season keeps its own claims, standings, and announcement channel. Leagues are compiled into the bot; seasons are configured per server at runtime. World Cup, Premier League, NFL, and NBA are supported.
 
 ## Setup
 
-1. Create a [Discord application](https://discord.com/developers/applications) and bot token.
-2. Get a free API token from [football-data.org](https://www.football-data.org/client/register) (soccer leagues). NFL and NBA data come from ESPN's public endpoints and need no key.
+1. Create a Discord application, add a bot, and invite it to your server. [Discord's bot docs](https://docs.discord.com/developers/bots/overview) cover the application, token, and invite. The bot needs to send messages (including embeds) in the channel where you run `/season start`.
+2. For soccer leagues, get an API token from [football-data.org](https://www.football-data.org/client/register). Squads and scorer totals need a plan that includes deep data. NFL and NBA use ESPN's public API and need no key.
 3. Provide credentials using either:
    - **`league-bot setup`** — prompts for tokens and saves them to a config file (see below), or
    - **`.env`** — copy `.env.example` to `.env` and fill in the values (handy for local development), or
    - **Environment variables** — for systemd, Docker, or Nix (recommended for servers).
-4. Invite the bot to your server. In the [Discord Developer Portal](https://discord.com/developers/applications) → **OAuth2** → **URL Generator**, select:
-   - **Scopes:** `bot`, `applications.commands`
-   - **Bot permissions:** View Channels, Send Messages, Embed Links, Create Public Threads, Send Messages in Threads
 
-   Open the generated URL to add the bot. It must be able to send messages (including embeds) in the channel where you run `/season start`.
+On a new server, an admin runs `/season start` in the announcement channel before anything else works. Run `/help` for commands, or `/help <command>` for one command (for example `/help claim`).
 
 ### Local development
 
@@ -50,85 +47,15 @@ Slash commands are registered automatically in each guild the bot joins on start
 
 The bot runs a lightweight HTTP server for liveness/readiness probes alongside the Discord gateway. `GET /health` (also `/healthz`) returns `200` when both the database connection is serving queries and the most recent background poll succeeded; if either check fails it returns `503`. The JSON body reports each check, e.g. `{"status":"ok","database":"ok","poller":"ok"}`. Configure the bind address with `HEALTH_CHECK_ADDR` (default `0.0.0.0:8080`).
 
-## Seasons
-
-Each Discord server configures the bot independently. On a **new** server, an admin must start a season first — nothing works until `/season start` has been run there.
-
-| Command | Who | What |
-|---------|-----|------|
-| `/season start <league> [name]` | admin | Create (or resume) a season. `name` defaults to the league plus the current year, e.g. `NFL 2026`. Starting a season **ends** that league's previous live season in the server, so a new year is one command. Match announcements are posted in the channel where this command is run. |
-| `/season end [league]` | admin | Stop match polling. Data is kept; `/standings league:<league>` still works. |
-| `/season list` | anyone | Every season in the server with live/ended state, roster phase, and announcement channel. |
-
-### The `league` option
-
-Every gameplay command (`/claim`, `/standings`, `/draft …`, `/team`, …) takes an optional `league` choice (World Cup, Premier League, NFL).
-
-- **One live season in the server** — leave it out; the bot uses that season.
-- **Several live seasons** — the bot asks which league; pick it from the dropdown.
-- **An ended season** — pass `league` explicitly to look at its standings or roster.
-
-There is no server-wide "current league" setting to switch.
-
-### Team selection and pre-season draft
-
-Teams can be claimed freely or through a snake draft:
-
-1. A new season's roster is `open`; members use `/claim <team>`. Admins can `/assign` a team to someone, and members can `/unclaim`.
-2. An admin runs `/draft start` mentioning every player (`@alice @bob @carol`). Order is **randomized** and the roster becomes `drafting`. `/claim` is blocked until the draft ends.
-3. During the draft, `/draft pick <team>` is restricted to the player on the clock; admins may `/assign` **only** for that player. The last picker may `/draft unpick` to undo their pick until the next person picks.
-4. The draft runs for full rounds only — each player gets the same number of teams (the pool size rounded down to a multiple of the player count). When that pick limit is reached, or when every team is taken, the draft completes and the roster is **frozen** (no further claims/assigns/unclaims/unpicks). Admins can also `/draft end` to freeze early, or `/draft cancel` to scrap the draft, clear its picks, and reopen the roster.
-
-Use `/draft status` anytime for order, whose turn, and remaining teams; `/undrafted` lists teams nobody holds.
-
-## Commands
-
-Run `/help` to list all commands, or `/help <command>` for details (e.g. `/help claim`).
-
 ## Leagues
 
-### World Cup (`wc`)
+A team belongs to one person at a time; one person can hold several teams. NFL and NBA teams can be claimed by full name, nickname, or abbreviation (for example `Eagles` or `PHI`). Finished games are polled every 5 minutes. Soccer tie-breaker goals come from `/pick-player` and do not add to the score.
 
-Each member claims one or more nations. Each nation can only be claimed by one person at a time; a person can claim multiple nations. When a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
+| League | Win / draw / loss | Playoff win | Tie-breaker | Counts | Data |
+|--------|-------------------|-------------|-------------|--------|------|
+| World Cup (`wc`) | 3 / 1 / 0 | 3 | Player goals | Finished matches | [football-data.org](https://www.football-data.org/) `WC` |
+| Premier League (`epl`) | 3 / 1 / 0 | 3 | Player goals | Finished matches | [football-data.org](https://www.football-data.org/) `PL` |
+| NFL (`nfl`) | 1 / 0.5 / 0 | 3 | None | Regular season and playoffs | [ESPN](https://www.espn.com/) |
+| NBA (`nba`) | 1 / — / 0 | 2 | None | Regular season and playoffs | [ESPN](https://www.espn.com/) |
 
-**Scoring** — points per match based on the result for each claimed team:
-
-| Result | Points |
-|--------|--------|
-| Win    | 3      |
-| Draw   | 1      |
-| Loss   | 0      |
-
-**Tie-breaker** — if two players finish with the same total points, the one whose designated player has scored more goals in the tournament ranks higher. Use `/pick-player` to choose one player from your claimed teams' squads. If you don't pick, tie-breaker goals count as 0. Tie-breaker goals do not add to your score — they only break ties on the leaderboard.
-
-The background poller runs every 5 minutes, fetching finished matches and scorer totals from football-data.org (`WC` competition). Player squads and scorer data require a football-data.org plan that includes deep data (squads and goal scorers).
-
-### Premier League (`epl`)
-
-Each member claims one or more clubs. Each club can only be claimed by one person at a time; a person can claim multiple clubs. When a claimed team's match finishes, the bot awards points and posts an announcement in the channel where the season was started.
-
-**Scoring** — same win/draw/loss points as World Cup (3 / 1 / 0).
-
-**Tie-breaker** — same as World Cup: designate a player with `/pick-player`; total goals from that player in the season break ties on the leaderboard.
-
-The background poller fetches finished matches and scorer totals from football-data.org (`PL` competition). Player squads and scorer data require a football-data.org plan that includes deep data.
-
-### NFL (`nfl`)
-
-Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Eagles`, `PHI`). When a claimed team's game goes final, the bot awards points and posts an announcement in the channel where the season was started.
-
-**Scoring** — regular-season win 1, tie 0.5, loss 0 per game; a playoff (postseason) win is worth 3. Regular-season and playoff games count; preseason and the Pro Bowl do not.
-
-**Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NFL seasons.
-
-The background poller fetches finished games from ESPN's public NFL API (no API key). Every live NFL season tracks the current NFL calendar season (March rolls over to the next season), so start one season per year.
-
-### NBA (`nba`)
-
-Each member claims one or more franchises. Each team can only be claimed by one person at a time; a person can claim multiple teams. Claim by full name, nickname, or abbreviation (e.g. `Lakers`, `LAL`). When a claimed team's game goes final, the bot awards points and posts an announcement in the channel where the season was started.
-
-**Scoring** — regular-season win 1, loss 0 per game; a playoff win is worth 2. Regular-season and playoff games count; preseason does not. (Basketball games cannot end level, so ties never award points.)
-
-**Tie-breaker** — none. Members level on points share a rank, and `/pick-player` is not used for NBA seasons.
-
-The background poller fetches finished games from ESPN's public NBA API (no API key). Every live NBA season tracks the current NBA calendar season (September rolls over to the next season, labeled by the year it ends — e.g. the 2025-26 season is `2026`), so start one season per year.
+NFL also skips the Pro Bowl. A live NFL season follows the calendar season that rolls over in March. A live NBA season rolls over in September and is labeled by the year it ends (the 2025–26 season is `2026`).

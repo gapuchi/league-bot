@@ -12,10 +12,10 @@ alwaysApply: false
 
 - Scoring or tie-breaker rules
 - Poller interval, announcement behavior, or which leagues are polled
-- Setup: env vars (`.env.example`), Discord permissions, invite scopes
-- Configuration behavior that is not obvious from `/help config` alone
+- Setup: env vars (`.env.example`) and other league-bot configuration
+- Configuration behavior that is not obvious from `/help` alone
 
-Slash command names, options, and permissions are documented via command docstrings and `/help` — update those in `src/commands/` instead of duplicating tables in README.
+Link [Discord's bot docs](https://docs.discord.com/developers/bots/overview) for creating an application and inviting the bot. Slash command names, options, and permissions live in command docstrings and `/help`; update those in `src/commands/`.
 
 ## Skip README for
 
@@ -27,8 +27,8 @@ Slash command names, options, and permissions are documented via command docstri
 | Change | README section |
 |--------|----------------|
 | New command | Command docstring in `src/commands/` (shown by `/help`) |
-| Config / league season behavior | **Configuration** |
-| Points or tie-breakers | **Leagues → World Cup** |
+| Config / league season behavior | **Setup** |
+| Points or tie-breakers | **Leagues** table |
 | Env vars | **Environment variables** table + `.env.example` |
 | Dev workflow | **Local development** |
 
