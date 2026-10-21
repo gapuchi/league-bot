@@ -56,7 +56,7 @@ pub async fn draft_start(
 #[poise::command(prefix_command, slash_command, guild_only, rename = "status")]
 pub async fn draft_status(
     ctx: Context<'_>,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one draft is open)"] league: Option<League>,
 ) -> Result<(), Error> {
     let guild_id = guild_id(&ctx)?;
     let message = draft::status_for_guild(ctx.data(), guild_id, league).await?;
@@ -74,7 +74,7 @@ pub async fn draft_status(
 )]
 pub async fn draft_end(
     ctx: Context<'_>,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one draft is open)"] league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
@@ -93,7 +93,7 @@ pub async fn draft_end(
 )]
 pub async fn draft_cancel(
     ctx: Context<'_>,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one draft is open)"] league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
@@ -107,7 +107,7 @@ pub async fn draft_cancel(
 pub async fn draft_pick(
     ctx: Context<'_>,
     #[description = "Team name, abbreviation, or code"] team: String,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one draft is open)"] league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;
@@ -123,7 +123,7 @@ pub async fn draft_pick(
 #[poise::command(prefix_command, slash_command, guild_only, rename = "unpick")]
 pub async fn draft_unpick(
     ctx: Context<'_>,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one draft is open)"] league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let guild_id = guild_id(&ctx)?;

@@ -3,6 +3,7 @@ mod order;
 pub use order::{max_draft_picks, next_picker, teams_per_player};
 
 use rand::seq::SliceRandom;
+use rusqlite::Connection;
 
 use crate::{
     clock,
@@ -12,7 +13,7 @@ use crate::{
     },
     league::League,
     season,
-    types::{Data, Error},
+    types::{Data, Error, UserError},
 };
 
 #[derive(Debug, Clone)]
@@ -208,7 +209,7 @@ pub async fn pick_for_user(
 ) -> Result<PickOutcome, Error> {
     let (season_id, league, order, order_kind, player_count) = {
         let conn = data.db.lock().await;
-        let (season, league) = season::resolve(&conn, guild_id, league)?;
+        let (season, league) = resolve_open_draft(&conn, guild_id, league)?;
         if season.roster_phase != RosterPhase::Drafting {
             return Ok(PickOutcome::Notice(match season.roster_phase {
                 RosterPhase::Open => {
@@ -320,7 +321,7 @@ pub async fn unpick_for_user(
 ) -> Result<String, Error> {
     let (season_id, league, order, order_kind) = {
         let conn = data.db.lock().await;
-        let (season, league) = season::resolve(&conn, guild_id, league)?;
+        let (season, league) = resolve_open_draft(&conn, guild_id, league)?;
         if season.roster_phase != RosterPhase::Drafting {
             return Ok(match season.roster_phase {
                 RosterPhase::Open => {
@@ -382,7 +383,7 @@ pub async fn freeze_for_guild(
 ) -> Result<String, Error> {
     let (season, _) = {
         let conn = data.db.lock().await;
-        season::resolve(&conn, guild_id, league)?
+        resolve_open_draft(&conn, guild_id, league)?
     };
 
     match season.roster_phase {
@@ -420,7 +421,7 @@ pub async fn cancel_for_guild(
     league: Option<League>,
 ) -> Result<String, Error> {
     let conn = data.db.lock().await;
-    let (season, league) = season::resolve(&conn, guild_id, league)?;
+    let (season, league) = resolve_open_draft(&conn, guild_id, league)?;
     if DraftSession::get(&conn, season.id)?.is_none() {
         return Ok("No draft to cancel. Start one with `/draft start`.".into());
     }
@@ -445,7 +446,7 @@ async fn load_status(
 ) -> Result<Option<DraftStatus>, Error> {
     let (season, league, session, order) = {
         let conn = data.db.lock().await;
-        let (season, league) = season::resolve(&conn, guild_id, league)?;
+        let (season, league) = resolve_open_draft(&conn, guild_id, league)?;
         let Some(session) = DraftSession::get(&conn, season.id)? else {
             return Ok(None);
         };
@@ -480,6 +481,38 @@ async fn load_status(
         picks_until_complete,
         teams_per_player: per_player,
     }))
+}
+
+/// Named league, else the guild's only open draft, else `season::resolve`.
+fn resolve_open_draft(
+    conn: &Connection,
+    guild_id: u64,
+    league: Option<League>,
+) -> Result<(Season, League), Error> {
+    if let Some(league) = league {
+        return season::resolve(conn, guild_id, Some(league));
+    }
+
+    let mut drafting = Season::list_drafting_for_guild(conn, guild_id)?;
+    match drafting.len() {
+        0 => season::resolve(conn, guild_id, None),
+        1 => {
+            let meta = drafting.remove(0);
+            let league = League::for_season(conn, meta.season.id)?;
+            Ok((meta.season, league))
+        }
+        _ => {
+            let names = drafting
+                .iter()
+                .map(|meta| meta.league_name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Err(UserError(format!(
+                "Which league? This server has open drafts for {names}. Add the `league` option."
+            ))
+            .into())
+        }
+    }
 }
 
 async fn count_unclaimed(data: &Data, season_id: i64, league: League) -> Result<usize, Error> {
