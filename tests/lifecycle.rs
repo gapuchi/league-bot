@@ -361,6 +361,99 @@ async fn draft_unpick_rejects_when_no_picks_or_frozen() {
 }
 
 #[tokio::test]
+async fn draft_commands_infer_the_only_open_draft() {
+    let conn = fresh();
+    let wc = wc_season(&conn);
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+    seed_active_draft(&conn, nfl.id, &[10, 20]);
+
+    let data = test_data(conn);
+    let message = draft::unpick_for_user(&data, GUILD, None, 10).await.unwrap();
+    assert!(message.contains("No picks"), "{message}");
+
+    let ended = draft::freeze_for_guild(&data, GUILD, None).await.unwrap();
+    assert!(ended.contains("frozen"), "{ended}");
+
+    let conn = data.db.lock().await;
+    assert_eq!(
+        Season::get(&conn, nfl.id).unwrap().unwrap().roster_phase,
+        RosterPhase::Frozen
+    );
+    assert_eq!(
+        Season::get(&conn, wc.id).unwrap().unwrap().roster_phase,
+        RosterPhase::Open
+    );
+}
+
+#[tokio::test]
+async fn draft_commands_find_an_open_draft_on_an_ended_season() {
+    let conn = fresh();
+    wc_season(&conn);
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+    Season::set_polling_enabled(&conn, nfl.id, false).unwrap();
+    seed_active_draft(&conn, nfl.id, &[10, 20]);
+
+    let data = test_data(conn);
+    let message = draft::unpick_for_user(&data, GUILD, None, 10).await.unwrap();
+    assert!(message.contains("No picks"), "{message}");
+}
+
+#[tokio::test]
+async fn draft_start_still_requires_a_league_when_several_seasons_are_live() {
+    let conn = fresh();
+    wc_season(&conn);
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+    seed_active_draft(&conn, nfl.id, &[10, 20]);
+
+    let data = test_data(conn);
+    let message = user_message(
+        draft::start_for_guild(&data, GUILD, None, vec![1, 2])
+            .await
+            .unwrap_err(),
+    );
+    assert!(message.contains("live seasons"), "{message}");
+}
+
+#[tokio::test]
+async fn draft_commands_require_league_when_several_drafts_are_open() {
+    let conn = fresh();
+    let wc = wc_season(&conn);
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+    seed_active_draft(&conn, wc.id, &[1, 2]);
+    seed_active_draft(&conn, nfl.id, &[3, 4]);
+
+    let data = test_data(conn);
+    let message = user_message(
+        draft::pick_for_user(&data, GUILD, None, 1, "Brazil")
+            .await
+            .unwrap_err(),
+    );
+    assert!(message.contains("open drafts"), "{message}");
+    assert!(message.contains("FIFA World Cup") && message.contains("NFL"), "{message}");
+
+    let named = draft::unpick_for_user(&data, GUILD, Some(League::Nfl), 3)
+        .await
+        .unwrap();
+    assert!(named.contains("No picks"), "{named}");
+}
+
+#[tokio::test]
+async fn draft_pick_still_asks_which_league_when_no_draft_is_open() {
+    let conn = fresh();
+    wc_season(&conn);
+    Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+
+    let data = test_data(conn);
+    let message = user_message(
+        draft::pick_for_user(&data, GUILD, None, 1, "Brazil")
+            .await
+            .unwrap_err(),
+    );
+    assert!(message.contains("Which league?"), "{message}");
+    assert!(message.contains("live seasons"), "{message}");
+}
+
+#[tokio::test]
 async fn draft_commands_are_scoped_to_the_named_league() {
     let conn = fresh();
     let wc = wc_season(&conn);

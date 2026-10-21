@@ -114,6 +114,21 @@ impl Season {
         rows.collect()
     }
 
+    /// Seasons in this guild whose roster is mid-draft, live or ended.
+    pub fn list_drafting_for_guild(
+        conn: &Connection,
+        guild_id: u64,
+    ) -> rusqlite::Result<Vec<SeasonMeta>> {
+        let mut stmt = conn.prepare(&format!(
+            "{META_SELECT} WHERE s.guild_id = ?1 AND s.roster_phase = ?2 ORDER BY l.id"
+        ))?;
+        let rows = stmt.query_map(
+            params![guild_id as i64, RosterPhase::Drafting.as_str()],
+            meta_from_row,
+        )?;
+        rows.collect()
+    }
+
     /// The guild's season for a league: the live one if any, otherwise the newest.
     pub fn latest_for_guild_league(
         conn: &Connection,
