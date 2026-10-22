@@ -484,7 +484,7 @@ async fn load_status(
 }
 
 /// Named league, else the guild's only open draft, else `season::resolve`.
-fn resolve_open_draft(
+pub(crate) fn resolve_open_draft(
     conn: &Connection,
     guild_id: u64,
     league: Option<League>,

@@ -10,6 +10,7 @@ use league_bot::{
     },
     draft,
     league::League,
+    registration,
     season,
     types::{Data, UserError},
 };
@@ -435,6 +436,62 @@ async fn draft_commands_require_league_when_several_drafts_are_open() {
         .await
         .unwrap();
     assert!(named.contains("No picks"), "{named}");
+}
+
+#[tokio::test]
+async fn undrafted_requires_league_when_several_drafts_are_open() {
+    let conn = fresh();
+    let wc = wc_season(&conn);
+    let nfl = Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+    seed_active_draft(&conn, wc.id, &[1, 2]);
+    seed_active_draft(&conn, nfl.id, &[3, 4]);
+
+    let data = test_data(conn);
+    let message = user_message(
+        registration::unclaimed_teams(&data, GUILD, None)
+            .await
+            .unwrap_err(),
+    );
+    assert!(message.contains("open drafts"), "{message}");
+    assert!(message.contains("FIFA World Cup") && message.contains("NFL"), "{message}");
+}
+
+#[tokio::test]
+async fn undrafted_infers_the_only_open_draft() {
+    let conn = fresh();
+    let wc = wc_season(&conn);
+    seed_active_draft(&conn, wc.id, &[1, 2]);
+    Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+
+    let data = test_data(conn);
+    match registration::unclaimed_teams(&data, GUILD, None).await {
+        Ok(registration::UnclaimedTeams::Available(names)) => {
+            assert!(names.iter().any(|name| name == "Brazil"), "{names:?}");
+        }
+        Ok(registration::UnclaimedTeams::AllClaimed) => {
+            panic!("expected the open draft's remaining teams");
+        }
+        Err(err) => {
+            let message = err.to_string();
+            assert!(!message.contains("Which league?"), "{message}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn undrafted_asks_which_league_when_no_draft_is_open() {
+    let conn = fresh();
+    wc_season(&conn);
+    Season::get_or_create(&conn, GUILD, "nfl", "nfl-2026", "NFL 2026", CHANNEL).unwrap();
+
+    let data = test_data(conn);
+    let message = user_message(
+        registration::unclaimed_teams(&data, GUILD, None)
+            .await
+            .unwrap_err(),
+    );
+    assert!(message.contains("Which league?"), "{message}");
+    assert!(message.contains("live seasons"), "{message}");
 }
 
 #[tokio::test]

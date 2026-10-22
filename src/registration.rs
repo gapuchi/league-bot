@@ -241,6 +241,7 @@ pub async fn list_season_teams(
     })
 }
 
+#[derive(Debug)]
 pub enum UnclaimedTeams {
     AllClaimed,
     Available(Vec<String>),
@@ -251,7 +252,11 @@ pub async fn unclaimed_teams(
     guild_id: u64,
     league: Option<League>,
 ) -> Result<UnclaimedTeams, Error> {
-    let (season, _, api_teams) = target_with_teams(data, guild_id, league).await?;
+    let (season, league) = {
+        let conn = data.db.lock().await;
+        draft::resolve_open_draft(&conn, guild_id, league)?
+    };
+    let api_teams = league.list_teams(data).await?;
 
     let claimed_team_ids = {
         let conn = data.db.lock().await;

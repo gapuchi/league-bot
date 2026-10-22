@@ -63,7 +63,7 @@ Tenancy is at **season** (`seasons.guild_id`).
 
 - Gameplay commands: every use case takes `guild_id` + `league: Option<League>` and calls `season::resolve` first. `League` derives `poise::ChoiceParameter`, so the slash option is a dropdown; it is always optional and always the last parameter.
 - There is **no per-guild default season**. Single-season guilds never see the `league` option; multi-season guilds are told to pass it.
-- Draft commands other than `/draft start` (`pick`, `unpick`, `status`, `end`, `cancel`): when `league` is omitted and exactly one season in the guild has roster phase `drafting`, that season is the target even if other seasons are live. Several open drafts still require `league`. No open draft falls back to `season::resolve`.
+- Draft commands other than `/draft start` (`pick`, `unpick`, `status`, `end`, `cancel`) and `/undrafted`: when `league` is omitted and exactly one season in the guild has roster phase `drafting`, that season is the target even if other seasons are live. Several open drafts still require `league`. No open draft falls back to `season::resolve`.
 - Poller: `Season::list_live_with_meta()` then `League::from_slug` → `poll`
 - Setup: `/season start <league> [name]` creates a season (slug from `season::slugify(name)`, default name `"<League> <year>"`) and ends the league's other live seasons in that guild; fresh guilds have none until then
 - `season_id` keys registrations, results, tie-breakers, announcements, draft sessions
@@ -127,7 +127,7 @@ Generic coding standards → **`coding-philosophy`** (`gapuchi/ai`).
 - Search, filtering, or orchestration in `api/`
 - Business logic in `commands/`
 - HTTP or Discord in `db/`
-- Bypass `season::resolve` in gameplay commands (draft commands may first take the guild's only open draft), or reintroduce a per-guild "current season"
+- Bypass `season::resolve` in gameplay commands (draft commands other than `/draft start`, and `/undrafted`, may first take the guild's only open draft), or reintroduce a per-guild "current season"
 - Hard-wire `Wc*` / `Nfl*` / `Nba*` types into shared host paths (`registration`, host `standings`, `game_poll`, `types`, `db/registration`)
 - Monolithic `db/mod.rs` with inline SQL
 - Raw `reqwest::Client` + token in host code when `FootballDataApi::from_env` exists

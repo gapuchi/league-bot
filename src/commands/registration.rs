@@ -135,7 +135,8 @@ pub async fn teams(
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn undrafted(
     ctx: Context<'_>,
-    #[description = "League (optional when only one season is live)"] league: Option<League>,
+    #[description = "League (optional when only one season is live or one draft is open)"]
+    league: Option<League>,
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
