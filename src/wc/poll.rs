@@ -4,6 +4,7 @@ use serenity::Mentionable;
 use crate::{
     api::{FootballDataApi, Match, Team},
     db::{Registration, SeasonMeta, WcAnnouncedElimination, league_competition_code},
+    game_poll,
     league::{League, PollOutcome},
     soccer::{classify_teams, TeamRef},
     soccer_poll,
@@ -31,13 +32,29 @@ pub async fn poll(
         soccer_poll::cache_scorers(data, &api, League::Wc, &competition, seasons).await;
 
     for meta in seasons {
+        let mut announcements = Vec::new();
         for m in &finished_matches {
-            if let Err(error) = soccer_poll::process_match(data, http, League::Wc, meta, m).await {
-                eprintln!(
+            match soccer_poll::process_match(data, League::Wc, meta, m).await {
+                Ok(Some(announcement)) => announcements.push(announcement),
+                Ok(None) => {}
+                Err(error) => eprintln!(
                     "Failed to process match {} for season {}: {error}",
                     m.id, meta.season.id
-                );
+                ),
             }
+        }
+        if let Err(error) = game_poll::announce_results(
+            http,
+            meta.season.announce_channel_id,
+            League::Wc,
+            announcements,
+        )
+        .await
+        {
+            eprintln!(
+                "Failed to announce World Cup scores for season {}: {error}",
+                meta.season.id
+            );
         }
         if let Err(error) = announce_new_eliminations(data, http, meta, &teams, &matches).await {
             eprintln!(
@@ -100,10 +117,11 @@ async fn post_elimination_announcement(
     channel_id: u64,
     notices: &[EliminationNotice],
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let emoji = League::Wc.emoji();
     let title = if notices.len() == 1 {
-        format!("{} eliminated", notices[0].team.name)
+        format!("{emoji} {} eliminated", notices[0].team.name)
     } else {
-        "Teams eliminated".into()
+        format!("{emoji} Teams eliminated")
     };
 
     let description = notices

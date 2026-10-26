@@ -58,6 +58,17 @@ struct GameUpdate {
     total_points: f64,
 }
 
+/// One finished game's announcement content. [`process_game`] builds these and the poller
+/// hands a season's batch to [`announce_results`], which renders them into a single embed.
+pub struct GameAnnouncement {
+    /// Field heading, e.g. `Week 5 — final`.
+    heading: String,
+    /// Field body: score line, per-owner point updates, and the scoring rule.
+    body: String,
+    /// A corrected score tints the whole embed gold.
+    is_correction: bool,
+}
+
 /// Cache `(player_id, total)` tie-breaker stats for every polled season, returning a log
 /// fragment such as `, 120 goal scorers cached for 2 season(s)`.
 pub async fn cache_tiebreaker_totals(
@@ -119,17 +130,18 @@ fn game_updates(
         .collect()
 }
 
-/// Ingest one finished game for a season and announce the result.
+/// Ingest one finished game for a season, returning its announcement content when there is
+/// something new to report. Callers batch these into a single embed per season.
 ///
 /// Idempotent per `(season, game_id)`; reprocesses only when a previously stored score
-/// changed (score correction).
+/// changed (score correction). Returns `None` when the game was already announced with the
+/// same score or when neither team is claimed.
 pub async fn process_game(
     data: &Data,
-    http: &serenity::Http,
     league: League,
     meta: &SeasonMeta,
     report: &GameReport,
-) -> Result<(), PollError> {
+) -> Result<Option<GameAnnouncement>, PollError> {
     let season = &meta.season;
 
     let (updates, is_correction, previous_score) = {
@@ -139,7 +151,7 @@ pub async fn process_game(
         if league.is_match_processed(&conn, season.id, report.game_id)? {
             if previous_score == Some(report.score()) {
                 league.upsert_match_result(&conn, season.id, report)?;
-                return Ok(());
+                return Ok(None);
             }
             league.unmark_match_processed(&conn, season.id, report.game_id)?;
         }
@@ -153,14 +165,13 @@ pub async fn process_game(
     };
 
     if updates.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
-    let channel_id = season.announce_channel_id;
 
     let correction_line = is_correction
         .then_some(previous_score)
         .flatten()
-        .map(|(prev_home, prev_away)| format!("_Previous: {prev_home}–{prev_away}_\n\n"))
+        .map(|(prev_home, prev_away)| format!("_Previous: {prev_home}–{prev_away}_\n"))
         .unwrap_or_default();
     let update_lines: String = updates
         .iter()
@@ -186,9 +197,16 @@ pub async fn process_game(
     } else {
         "win"
     };
-    let description = format!(
-        "{correction_line}**{}** {}–{} **{}**\n\n\
-         {update_lines}\nScoring: {win_label} {win_points}, {draw_label} {}, loss {}",
+
+    let title_suffix = if is_correction {
+        "score corrected"
+    } else {
+        league.finished_label()
+    };
+    let heading = format!("{} — {title_suffix}", report.title);
+    let body = format!(
+        "{correction_line}**{}** {}–{} **{}**\n\
+         {update_lines}Scoring: {win_label} {win_points}, {draw_label} {}, loss {}",
         report.home_name,
         report.home_score,
         report.away_score,
@@ -197,20 +215,43 @@ pub async fn process_game(
         rules.loss
     );
 
-    let (title_suffix, colour) = if is_correction {
-        ("score corrected", serenity::Colour::GOLD)
-    } else {
-        (league.finished_label(), serenity::Colour::DARK_GREEN)
-    };
+    Ok(Some(GameAnnouncement {
+        heading,
+        body,
+        is_correction,
+    }))
+}
 
-    let embed = serenity::CreateEmbed::default()
-        .title(format!("{} — {title_suffix}", report.title))
-        .description(description)
-        .colour(colour);
+/// Post a season's new results as a single combined embed, one field per game. Discord caps
+/// an embed at 25 fields, so a longer slate spills into additional embeds (sent as their own
+/// messages). No-op when there is nothing new to report.
+pub async fn announce_results(
+    http: &serenity::Http,
+    channel_id: u64,
+    league: League,
+    announcements: Vec<GameAnnouncement>,
+) -> Result<(), PollError> {
+    if announcements.is_empty() {
+        return Ok(());
+    }
 
-    serenity::ChannelId::new(channel_id)
-        .send_message(http, serenity::CreateMessage::new().embed(embed))
-        .await?;
+    let channel = serenity::ChannelId::new(channel_id);
+    for chunk in announcements.chunks(25) {
+        let colour = if chunk.iter().any(|announcement| announcement.is_correction) {
+            serenity::Colour::GOLD
+        } else {
+            serenity::Colour::DARK_GREEN
+        };
+        let embed = chunk.iter().fold(
+            serenity::CreateEmbed::default()
+                .title(format!("{} {}", league.emoji(), league.display_name()))
+                .colour(colour),
+            |embed, announcement| embed.field(&announcement.heading, &announcement.body, false),
+        );
+        channel
+            .send_message(http, serenity::CreateMessage::new().embed(embed))
+            .await?;
+    }
 
     Ok(())
 }

@@ -100,6 +100,17 @@ impl League {
         }
     }
 
+    /// Emoji prefixed to announcements so sports are distinguishable at a glance when a
+    /// guild runs several leagues side by side.
+    pub fn emoji(self) -> &'static str {
+        match self {
+            Self::Wc => "🌍",
+            Self::Epl => "⚽",
+            Self::Nfl => "🏈",
+            Self::Nba => "🏀",
+        }
+    }
+
     /// Whether `/season start` (and related setup) may target this slug.
     pub fn supports_season(slug: &str) -> bool {
         Self::from_slug(slug).is_some()
@@ -577,6 +588,16 @@ mod tests {
         assert_eq!(League::Nfl.finished_label(), "final");
         assert_eq!(League::Nba.finished_label(), "final");
         assert_eq!(League::Epl.finished_label(), "full time");
+    }
+
+    #[test]
+    fn each_league_has_a_distinct_emoji() {
+        let emojis: Vec<&str> = League::ALL.iter().map(|league| league.emoji()).collect();
+        let mut unique = emojis.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(emojis.len(), unique.len(), "league emojis must be distinct");
+        assert!(emojis.iter().all(|emoji| !emoji.is_empty()));
     }
 
     #[test]

@@ -3,6 +3,7 @@ use poise::serenity_prelude as serenity;
 use crate::{
     api::{FootballDataApi, Match},
     db::league_competition_code,
+    game_poll,
     league::{League, PollOutcome},
     soccer_poll,
     types::Data,
@@ -23,13 +24,29 @@ pub async fn poll(
         soccer_poll::cache_scorers(data, &api, League::Epl, &competition, seasons).await;
 
     for meta in seasons {
+        let mut announcements = Vec::new();
         for m in &finished_matches {
-            if let Err(error) = soccer_poll::process_match(data, http, League::Epl, meta, m).await {
-                eprintln!(
+            match soccer_poll::process_match(data, League::Epl, meta, m).await {
+                Ok(Some(announcement)) => announcements.push(announcement),
+                Ok(None) => {}
+                Err(error) => eprintln!(
                     "Failed to process match {} for season {}: {error}",
                     m.id, meta.season.id
-                );
+                ),
             }
+        }
+        if let Err(error) = game_poll::announce_results(
+            http,
+            meta.season.announce_channel_id,
+            League::Epl,
+            announcements,
+        )
+        .await
+        {
+            eprintln!(
+                "Failed to announce Premier League scores for season {}: {error}",
+                meta.season.id
+            );
         }
     }
 

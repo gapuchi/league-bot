@@ -49,7 +49,7 @@ The bot runs a lightweight HTTP server for liveness/readiness probes alongside t
 
 ## Leagues
 
-A team belongs to one person at a time; one person can hold several teams. NFL and NBA teams can be claimed by full name, nickname, or abbreviation (for example `Eagles` or `PHI`). Finished games are polled every 5 minutes. Soccer tie-breaker goals come from `/pick-player` and do not add to the score.
+A team belongs to one person at a time; one person can hold several teams. NFL and NBA teams can be claimed by full name, nickname, or abbreviation (for example `Eagles` or `PHI`). Finished games are polled every 5 minutes; each poll batches a league's new results into a single embed (one game per field), titled with the league's emoji (🌍 World Cup, ⚽ Premier League, 🏈 NFL, 🏀 NBA) so sports stay distinguishable when several leagues share a server. Soccer tie-breaker goals come from `/pick-player` and do not add to the score.
 
 | League | Win / draw / loss | Playoff win | Tie-breaker | Counts | Data |
 |--------|-------------------|-------------|-------------|--------|------|

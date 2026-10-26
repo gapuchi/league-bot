@@ -31,14 +31,29 @@ pub async fn poll(
         .collect();
 
     for meta in seasons {
+        let mut announcements = Vec::new();
         for report in &reports {
-            if let Err(error) = game_poll::process_game(data, http, League::Nfl, meta, report).await
-            {
-                eprintln!(
+            match game_poll::process_game(data, League::Nfl, meta, report).await {
+                Ok(Some(announcement)) => announcements.push(announcement),
+                Ok(None) => {}
+                Err(error) => eprintln!(
                     "Failed to process game {} for season {}: {error}",
                     report.game_id, meta.season.id
-                );
+                ),
             }
+        }
+        if let Err(error) = game_poll::announce_results(
+            http,
+            meta.season.announce_channel_id,
+            League::Nfl,
+            announcements,
+        )
+        .await
+        {
+            eprintln!(
+                "Failed to announce NFL scores for season {}: {error}",
+                meta.season.id
+            );
         }
     }
 

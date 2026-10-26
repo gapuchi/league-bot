@@ -1,12 +1,10 @@
 //! football-data.org specifics shared by the soccer leagues: which matches count as
 //! finished, mapping a `Match` into the shared [`GameReport`], and scorer caching.
 
-use poise::serenity_prelude as serenity;
-
 use crate::{
     api::{FootballDataApi, Match},
     db::SeasonMeta,
-    game_poll::{self, GameReport},
+    game_poll::{self, GameAnnouncement, GameReport},
     league::League,
     soccer::full_time_score,
     types::Data,
@@ -66,16 +64,16 @@ pub fn game_report(m: &Match, league_name: &str) -> Option<GameReport> {
     })
 }
 
-/// Ingest one finished match for a season and announce the result.
+/// Ingest one finished match for a season, returning its announcement content when there is
+/// something new to report (see [`game_poll::process_game`]).
 pub async fn process_match(
     data: &Data,
-    http: &serenity::Http,
     league: League,
     meta: &SeasonMeta,
     m: &Match,
-) -> Result<(), PollError> {
+) -> Result<Option<GameAnnouncement>, PollError> {
     let Some(report) = game_report(m, &meta.league_name) else {
-        return Ok(());
+        return Ok(None);
     };
-    game_poll::process_game(data, http, league, meta, &report).await
+    game_poll::process_game(data, league, meta, &report).await
 }
