@@ -1,6 +1,7 @@
 //! ESPN public NFL and NBA endpoints (no API key). Ids arrive as JSON strings and
 //! are parsed to `i64` here so downstream code sees the same shape as other providers.
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
 
 use super::{ApiError, check_response, decode_json};
@@ -32,6 +33,25 @@ fn string_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i64, D::Erro
         StringOrNumber::Number(value) => Ok(value),
         StringOrNumber::Text(text) => text.trim().parse().map_err(serde::de::Error::custom),
     }
+}
+
+/// Drop bare `{}` placeholders ESPN inserts into a scoreboard `events` array
+/// (unset slots between real games). Every other element stays strict, so a
+/// game that is missing `id` or any other required field still fails the decode.
+fn skip_empty_objects<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    let mut kept = Vec::with_capacity(values.len());
+    for value in values {
+        if value.as_object().is_some_and(|object| object.is_empty()) {
+            continue;
+        }
+        kept.push(serde_json::from_value(value).map_err(serde::de::Error::custom)?);
+    }
+    Ok(kept)
 }
 
 fn opt_string_i64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i64>, D::Error> {
@@ -104,7 +124,7 @@ struct TeamEntry {
 
 #[derive(Deserialize)]
 struct ScoreboardResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "skip_empty_objects")]
     events: Vec<Event>,
 }
 
@@ -261,7 +281,7 @@ struct NbaTeamEntry {
 
 #[derive(Deserialize)]
 struct NbaScoreboardResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "skip_empty_objects")]
     events: Vec<NbaEvent>,
 }
 
@@ -393,5 +413,40 @@ mod tests {
         .unwrap();
         assert_eq!(without_score.score, None);
         assert_eq!(without_score.team.id, 2);
+    }
+
+    #[test]
+    fn scoreboard_skips_empty_events() {
+        let body: ScoreboardResponse = serde_json::from_str(
+            r#"{"events":[{},{"id":"401772985","season":{"year":2025,"type":3},"week":{"number":2},"competitions":[{"competitors":[{"homeAway":"home","score":"20","team":{"id":"14","displayName":"Los Angeles Rams"}},{"homeAway":"away","score":"17","team":{"id":"3","displayName":"Chicago Bears"}}],"status":{"type":{"completed":true}}}]},{},{}]}"#,
+        )
+        .unwrap();
+        assert_eq!(body.events.len(), 1);
+        assert_eq!(body.events[0].id, 401772985);
+        assert!(body.events[0].competitions[0].status.status_type.completed);
+
+        let nba: NbaScoreboardResponse = serde_json::from_str(
+            r#"{"events":[{},{"id":"401909903","season":{"year":2026,"type":2},"competitions":[{"competitors":[{"homeAway":"home","score":"110","team":{"id":"13","displayName":"Los Angeles Lakers"}},{"homeAway":"away","score":"104","team":{"id":"2","displayName":"Boston Celtics"}}],"status":{"type":{"completed":true}}}]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(nba.events.len(), 1);
+        assert_eq!(nba.events[0].id, 401909903);
+    }
+
+    #[test]
+    fn scoreboard_still_rejects_a_non_empty_event_missing_id() {
+        let error = serde_json::from_str::<ScoreboardResponse>(
+            r#"{"events":[{"season":{"year":2025,"type":2},"competitions":[]}]}"#,
+        )
+        .err()
+        .unwrap();
+        assert!(error.to_string().contains("id"), "{error}");
+
+        let nba_error = serde_json::from_str::<NbaScoreboardResponse>(
+            r#"{"events":[{"season":{"year":2026,"type":2},"competitions":[]}]}"#,
+        )
+        .err()
+        .unwrap();
+        assert!(nba_error.to_string().contains("id"), "{nba_error}");
     }
 }
